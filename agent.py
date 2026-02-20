@@ -1,8 +1,12 @@
 """
 Reinforcement learning agent for the Player (not dealer) using Monte Carlo control.
 
-Episode: 1) Cards dealt  2) Agent acts  3) Other players act  4) Dealer acts  5) Reward assigned.
-The agent chooses one action (hold or draw 1–3 cards) to maximize expected reward.
+Episode: 
+1. Cards dealt
+2. Agent acts
+3. Other players act
+4. Dealer acts
+5. Reward assigned.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from game import (
     make_deck,
 )
 from game import Card  # noqa: F401 - for type hints
-from deck import SwooshShuffleStrategy
+from deck import DeckCuttingStrategy, SwooshShuffleStrategy
 
 
 # --- State representation (at decision time: 2 cards) ---
@@ -47,10 +51,8 @@ def state_from_hand(cards: list[Card]) -> tuple[int, int]:
     return (value, usable)
 
 
-# --- Actions: 0 = hold, 1 = draw 1, 2 = draw 2, 3 = draw 3 ---
-
-NUM_ACTIONS = 4  # hold, draw 1, draw 2, draw 3
-
+# Actions: 
+NUM_ACTIONS = 4  # hold 0, draw 1, draw 2, draw 3
 
 def action_to_hold_or_draw(action: int) -> tuple[Action, int]:
     """Map action index to (Action.HOLD or Action.DRAW, num_cards)."""
@@ -70,21 +72,16 @@ def get_legal_actions(num_cards: int) -> list[int]:
 # --- Episode runner ---
 
 def run_episode(
-    n_players: int,
     agent_position: int,
     get_agent_action: Callable[[tuple[int, int]], int],
-    *,
-    seed: int | None = None,
+    deck: list[Card],
+    game: Game,
 ) -> tuple[tuple[int, int], int, int]:
     """
     Run one episode: deal, agent acts when it's their turn, others and dealer use bots.
     Returns (state, action, reward) for the agent. If agent had natural blackjack, action is -1.
     """
-    if seed is not None:
-        random.seed(seed)
-    deck = make_deck()
-    SwooshShuffleStrategy().shuffle(deck, is_first=True)
-    game = Game(n_players=n_players)
+    assert len(deck) == 52
     game.deal(deck)
 
     agent_state: tuple[int, int] | None = None
@@ -151,23 +148,18 @@ def run_episode(
         agent_state = (21, 1)
     return (agent_state, agent_action, reward)
 
-
-# --- Monte Carlo control ---
-
 def mc_control(
     n_players: int = 2,
     agent_position: int = 1,
     num_episodes: int = 500_000,
     epsilon: float = 0.1,
-    *,
-    seed: int | None = None,
 ) -> tuple[dict[tuple[int, int], list[float]], dict[tuple[int, int], int]]:
     """
     Monte Carlo control (first-visit) with epsilon-greedy policy.
     Returns (Q, policy) where Q[state] = [Q(s,0), Q(s,1), Q(s,2), Q(s,3)] and policy[state] = best action.
     """
-    if seed is not None:
-        random.seed(seed)
+    game = Game(n_players=n_players)
+    deck = make_deck()
 
     # Q[s][a] = average return for (s,a). We store sum and count for incremental update.
     Q_sum: dict[tuple[int, int], list[float]] = defaultdict(lambda: [0.0] * NUM_ACTIONS)
@@ -181,14 +173,19 @@ def mc_control(
         best_a = max(legal, key=lambda a: qs[a] if Q_count[state][a] > 0 else float("-inf"))
         return best_a
 
+    SwooshShuffleStrategy().shuffle(deck, is_first=True)
     for ep in range(num_episodes):
-        state, action, reward = run_episode(n_players, agent_position, get_action)
+        state, action, reward = run_episode(agent_position, get_action, deck, game)
         if action < 0:
+            game.soft_reset()
+            DeckCuttingStrategy().shuffle(deck, is_first=False)
             continue  # natural blackjack; no (s,a) to update
         # First-visit: this is the only (s,a) in the episode, so return = reward
         G = reward
         Q_sum[state][action] += G
         Q_count[state][action] += 1
+        game.soft_reset()
+        DeckCuttingStrategy().shuffle(deck, is_first=False)
 
     # Convert to Q values (means) and derive greedy policy
     Q: dict[tuple[int, int], list[float]] = {}
@@ -205,8 +202,6 @@ def mc_control(
     return Q, policy
 
 
-# --- Trained agent policy (use after mc_control) ---
-
 def make_agent_policy(
     policy: dict[tuple[int, int], int],
     epsilon: float = 0.0,
@@ -221,13 +216,9 @@ def make_agent_policy(
 
     return get_action
 
-
-# --- Save / load policy (for CLI use) ---
-
 def policy_to_dict(policy: dict[tuple[int, int], int]) -> dict[str, int]:
     """Serialize policy to JSON-friendly dict: keys like '12_0' for (12, 0)."""
     return {f"{s[0]}_{s[1]}": a for s, a in policy.items()}
-
 
 def policy_from_dict(data: dict[str, int]) -> dict[tuple[int, int], int]:
     """Deserialize policy from dict."""

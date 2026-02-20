@@ -72,6 +72,10 @@ def main() -> None:
         epsilon=epsilon,
     )
 
+    _policy = policy.copy()
+    policy = {}
+    for state in sorted(_policy.keys(), key=lambda s: (s[0], s[1])):
+        policy[state] = _policy[state]
     # Save policy
     data = policy_to_dict(policy)
     with open(policy_path, "w") as f:

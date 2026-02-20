@@ -48,7 +48,7 @@ class DeckCuttingStrategy(DeckShuffleStrategy):
         self,
         proportion_min: float = 0.1,
         proportion_max: float = 0.7,
-        n: int = 1,
+        n: int = 5,
     ):
         """
         :param proportion_min: minimum fraction of deck to cut (0–1)
