@@ -47,8 +47,8 @@ def parse_args() -> argparse.Namespace:
         help=f"Epsilon for epsilon-greedy exploration (default: {DEFAULT_EPSILON})",
     )
     args = p.parse_args()
-    if args.n_players < 1 or args.n_players > 5:
-        p.error("--n-players must be between 1 and 5")
+    if args.n_players < 1 or args.n_players > 20:
+        p.error("--n-players must be between 1 and 20")
     if args.episodes < 1:
         p.error("--episodes must be positive")
     if not 0 <= args.epsilon <= 1:

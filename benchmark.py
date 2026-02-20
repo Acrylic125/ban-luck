@@ -21,24 +21,30 @@ from game import (
 )
 from players import Player, SimplePlayer, PolicyBasedPlayer
 from agent import policy_from_dict
-
+from scipy import stats
 
 NUM_RUNS_DEFAULT = 100
 N_PLAYERS_DEFAULT = 2
 
 
 def run_game_all_same_strategy(
-    n_players: int,
+    game: Game,
     player: Player,
+    *,
     seed: int,
+    is_first_round: bool,
 ) -> float:
     """
-    Run one game with the given seed. All non-dealer players use the same strategy.
+    Run one game. All non-dealer players use the same strategy.
+    Uses the shared game instance: first round calls deal(), later rounds use soft_reset + deal_round.
     Returns the mean reward per player (over positions 1..n_players).
     """
     random.seed(seed)
-    game = Game(n_players=n_players)
-    game.deal()
+    if is_first_round:
+        game.deal()
+    else:
+        game.soft_reset()
+        game.deal_round()
 
     while not game.all_turns_done():
         current = game.current_turn
@@ -102,8 +108,8 @@ def parse_args() -> argparse.Namespace:
         help=f"Number of games per strategy (default: {NUM_RUNS_DEFAULT})",
     )
     args = p.parse_args()
-    if args.n_players < 1 or args.n_players > 5:
-        p.error("--n-players must be between 1 and 5")
+    if args.n_players < 1 or args.n_players > 20:
+        p.error("--n-players must be between 1 and 20")
     if args.runs < 1:
         p.error("--runs must be positive")
     return args
@@ -127,14 +133,20 @@ def main() -> None:
 
     rewards_policy: list[float] = []
     rewards_simple: list[float] = []
+    game = Game(n_players=n_players)
 
     for run in range(num_runs):
         seed = run
+        is_first = run == 0
         rewards_policy.append(
-            run_game_all_same_strategy(n_players, policy_player, seed)
+            run_game_all_same_strategy(
+                game, policy_player, seed=seed, is_first_round=is_first
+            )
         )
         rewards_simple.append(
-            run_game_all_same_strategy(n_players, simple_player, seed)
+            run_game_all_same_strategy(
+                game, simple_player, seed=seed, is_first_round=False
+            )
         )
 
     # Stats
@@ -160,6 +172,23 @@ def main() -> None:
     print("\nSimplePlayer:")
     print(f"  Mean reward (per player): {mean_simple:.4f}")
     print(f"  Std dev:                  {std_simple:.4f}")
+
+    # Significance (paired: same run for both strategies)
+    mean_diff = mean_policy - mean_simple
+    diffs = [p - s for p, s in zip(rewards_policy, rewards_simple)]
+    n = len(diffs)
+    if n >= 2:
+        t_stat, p_value = stats.ttest_rel(rewards_policy, rewards_simple)
+        std_diff = std(diffs, None)
+        se_diff = std_diff / (n ** 0.5) if n else 0.0
+        # Approximate 95% CI for mean difference (t ~ 1.96 for large n)
+        t_95 = 1.96 if n > 30 else {2: 4.30, 5: 2.57, 10: 2.23, 20: 2.09, 30: 2.04}.get(n, 2.0)
+        ci_lo = mean_diff - t_95 * se_diff
+        ci_hi = mean_diff + t_95 * se_diff
+        print("\n--- Significance (paired comparison) ---")
+        print(f"  Mean difference (Policy − Simple): {mean_diff:.4f}")
+        print(f"  95% CI for difference:             [{ci_lo:.4f}, {ci_hi:.4f}]")
+        print(f"  Paired t-test: t = {t_stat:.4f}, p = {p_value:.4f}")
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     bin_edges = [x * 0.5 for x in range(-5, 8)]  # -2.5 to 3.5

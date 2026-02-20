@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
-from deck import SwooshShuffleStrategy, DeckShuffleStrategy
+from deck import DeckCuttingStrategy, DeckShuffleStrategy, SwooshShuffleStrategy
 
 class Suit(str, Enum):
     SPADES = "♠"
@@ -162,13 +163,10 @@ class Game:
         self.current_turn: int = 1  # 1 to n_players, then 0 for dealer
         self.revealed: bool = False
         self._first_deal = True
-        if first_shuffle is None or subsequent_shuffle is None:
-            default = SwooshShuffleStrategy()
-            self._first_shuffle = first_shuffle if first_shuffle is not None else default
-            self._subsequent_shuffle = subsequent_shuffle if subsequent_shuffle is not None else default
-        else:
-            self._first_shuffle = first_shuffle
-            self._subsequent_shuffle = subsequent_shuffle
+        default = SwooshShuffleStrategy()
+        self._first_shuffle = first_shuffle if first_shuffle is not None else default
+        self._subsequent_shuffle = DeckCuttingStrategy(proportion_min=0.1, proportion_max=0.7, n=10)
+        # self._subsequent_shuffle = subsequent_shuffle if subsequent_shuffle is not None else default
 
     def _seat_order_for_deal(self) -> List[int]:
         """Order to deal: first card to 1, 2, ..., n_players, 0; then same again."""
@@ -256,6 +254,42 @@ class Game:
 
     def get_player_reward(self, position: int) -> Optional[int]:
         return self.players[position].reward if 0 <= position < self.N else None
+
+    def soft_reset(self) -> None:
+        """
+        Put all players' hands back onto the top of the deck (in random player order),
+        then reset each player state and current_turn. Use before the next round when
+        reusing the same game instance.
+        """
+        player_order = list(range(self.N))
+        random.shuffle(player_order)
+        for k in player_order:
+            p = self.players[k]
+            for c in p.hand:
+                self.deck.append(c)
+            p.hand.clear()
+            p.reward = None
+            p.done = False
+            p.drew_cards = False
+        self.current_turn = 1
+        self.revealed = False
+
+    def deal_round(self) -> None:
+        """
+        Deal 2 cards to each player from the current deck (no shuffle).
+        Assumes deck is full and player states were cleared (e.g. after soft_reset).
+        """
+        order = self._seat_order_for_deal()
+        for _ in range(2):
+            for k in order:
+                self.players[k].hand.append(self.deck.pop())
+        self.current_turn = 1
+        self.revealed = False
+        for k in range(1, self.N):
+            p = self.players[k]
+            if is_natural_blackjack(p.hand):
+                p.reward = 2
+                p.done = True
 
 
 def bot_hold_or_draw(game: Game, position: int) -> tuple[Action, int]:
