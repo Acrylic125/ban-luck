@@ -19,8 +19,10 @@ from game import (
     _min_total,
     bot_hold_or_draw,
     dealer_bot_action,
+    make_deck,
 )
 from game import Card  # noqa: F401 - for type hints
+from deck import SwooshShuffleStrategy
 
 
 # --- State representation (at decision time: 2 cards) ---
@@ -80,8 +82,10 @@ def run_episode(
     """
     if seed is not None:
         random.seed(seed)
+    deck = make_deck()
+    SwooshShuffleStrategy().shuffle(deck, is_first=True)
     game = Game(n_players=n_players)
-    game.deal()
+    game.deal(deck)
 
     agent_state: tuple[int, int] | None = None
     agent_action: int = -1

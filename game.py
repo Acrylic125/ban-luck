@@ -6,7 +6,7 @@ import random
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
-from deck import DeckCuttingStrategy, DeckShuffleStrategy, SwooshShuffleStrategy
+
 
 class Suit(str, Enum):
     SPADES = "♠"
@@ -146,39 +146,24 @@ class PlayerState:
 
 
 class Game:
-    """Single round: one dealer, positions 1..n_players (N = n_players + 1)."""
+    """Single round: one dealer, positions 1..n_players (N = n_players + 1). Caller passes the deck to deal()."""
 
-    def __init__(
-        self,
-        n_players: int,
-        *,
-        first_shuffle: DeckShuffleStrategy | None = None,
-        subsequent_shuffle: DeckShuffleStrategy | None = None,
-    ):
+    def __init__(self, n_players: int):
         assert n_players >= 1
         self.n_players = n_players
         self.N = n_players + 1  # dealer + players
-        self.deck: List[Card] = make_deck()
+        self.deck: List[Card] = []
         self.players: List[PlayerState] = []
         self.current_turn: int = 1  # 1 to n_players, then 0 for dealer
         self.revealed: bool = False
-        self._first_deal = True
-        default = SwooshShuffleStrategy()
-        self._first_shuffle = first_shuffle if first_shuffle is not None else default
-        self._subsequent_shuffle = DeckCuttingStrategy(proportion_min=0.1, proportion_max=0.7, n=10)
-        # self._subsequent_shuffle = subsequent_shuffle if subsequent_shuffle is not None else default
 
     def _seat_order_for_deal(self) -> List[int]:
         """Order to deal: first card to 1, 2, ..., n_players, 0; then same again."""
         return list(range(1, self.N)) + [0]
 
-    def deal(self) -> None:
-        # self.deck = make_deck()
-        if self._first_deal:
-            self._first_shuffle.shuffle(self.deck, is_first=True)
-            self._first_deal = False
-        else:
-            self._subsequent_shuffle.shuffle(self.deck, is_first=False)
+    def deal(self, deck: List[Card]) -> None:
+        """Deal from the provided deck (caller is responsible for shuffling). Deck is used in place."""
+        self.deck = deck
         self.players = [PlayerState(position=k) for k in range(self.N)]
         order = self._seat_order_for_deal()
         for _ in range(2):

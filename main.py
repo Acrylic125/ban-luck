@@ -4,6 +4,7 @@
 import json
 from pathlib import Path
 
+from deck import SwooshShuffleStrategy
 from game import (
     Game,
     Action,
@@ -12,6 +13,7 @@ from game import (
     is_natural_blackjack,
     bot_hold_or_draw,
     dealer_bot_action as _dealer_bot_action,
+    make_deck,
 )
 
 # Optional: trained RL agent (load when user chooses "trained agent")
@@ -69,8 +71,10 @@ def run_cli() -> None:
             pass
         print(f"Enter a number from 1 to {n_players}.")
 
+    deck = make_deck()
+    SwooshShuffleStrategy().shuffle(deck, is_first=True)
     game = Game(n_players=n_players)
-    game.deal()
+    game.deal(deck)
 
     print("\n--- Dealt hands (others hidden until reveal) ---")
     for k in game.turn_order():

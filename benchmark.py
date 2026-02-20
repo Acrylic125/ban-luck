@@ -13,12 +13,9 @@ import json
 import random
 from pathlib import Path
 import matplotlib.pyplot as plt
-from game import (
-    Game,
-    Action,
-    is_natural_blackjack,
-    dealer_bot_action,
-)
+from game import Card, Game, make_deck
+from game import Action, is_natural_blackjack, dealer_bot_action
+from deck import DeckCuttingStrategy, DeckShuffleStrategy, SwooshShuffleStrategy
 from players import Player, SimplePlayer, PolicyBasedPlayer
 from agent import policy_from_dict
 from scipy import stats
@@ -31,20 +28,23 @@ def run_game_all_same_strategy(
     game: Game,
     player: Player,
     *,
-    seed: int,
-    is_first_round: bool,
+    deck: list[Card],
 ) -> float:
     """
     Run one game. All non-dealer players use the same strategy.
-    Uses the shared game instance: first round calls deal(), later rounds use soft_reset + deal_round.
+    Uses the shared game instance: first round uses a new deck and first_shuffle; later rounds use soft_reset + subsequent_shuffle + deal_round.
     Returns the mean reward per player (over positions 1..n_players).
     """
-    random.seed(seed)
-    if is_first_round:
-        game.deal()
-    else:
-        game.soft_reset()
-        game.deal_round()
+    # random.seed(seed)
+    # if is_first_round:
+    #     deck = make_deck()
+    #     first_shuffle.shuffle(deck, is_first=True)
+    #     game.deal(deck)
+    # else:
+    #     game.soft_reset()
+    #     subsequent_shuffle.shuffle(game.deck, is_first=False)
+    #     game.deal_round()
+    game.deal(deck)
 
     while not game.all_turns_done():
         current = game.current_turn
@@ -134,20 +134,29 @@ def main() -> None:
     rewards_policy: list[float] = []
     rewards_simple: list[float] = []
     game = Game(n_players=n_players)
+    first_shuffle = SwooshShuffleStrategy()
+    subsequent_shuffle = DeckCuttingStrategy()
 
+    deck = make_deck()
+    first_shuffle.shuffle(deck, is_first=True)
     for run in range(num_runs):
-        seed = run
-        is_first = run == 0
         rewards_policy.append(
             run_game_all_same_strategy(
-                game, policy_player, seed=seed, is_first_round=is_first
+                game,
+                policy_player,
+                deck=deck,
             )
         )
+        game.soft_reset()
         rewards_simple.append(
             run_game_all_same_strategy(
-                game, simple_player, seed=seed, is_first_round=False
+                game,
+                simple_player,
+                deck=deck,
             )
         )
+        game.soft_reset()
+        subsequent_shuffle.shuffle(deck, is_first=False)
 
     # Stats
     def mean(xs: list[float]) -> float:
