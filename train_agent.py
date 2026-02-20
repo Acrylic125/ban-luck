@@ -2,9 +2,7 @@
 """
 Train the Player agent using Monte Carlo control, then save the policy.
 
-Usage:
-  python train_agent.py [OPTIONS]
-  python train_agent.py --n-players 3 --episodes 500000 --epsilon 0.1
+uv run train_agent.py --n-players 3 --episodes 500000 --epsilon 0.1
 """
 
 from __future__ import annotations

@@ -12,7 +12,7 @@ import argparse
 import json
 import random
 from pathlib import Path
-
+import matplotlib.pyplot as plt
 from game import (
     Game,
     Action,
@@ -160,13 +160,6 @@ def main() -> None:
     print("\nSimplePlayer:")
     print(f"  Mean reward (per player): {mean_simple:.4f}")
     print(f"  Std dev:                  {std_simple:.4f}")
-
-    # Plots
-    try:
-        import matplotlib.pyplot as plt
-    except ImportError:
-        print("\nmatplotlib not installed; skipping plots.")
-        return
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     bin_edges = [x * 0.5 for x in range(-5, 8)]  # -2.5 to 3.5

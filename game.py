@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import random
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional
-
+from deck import SwooshShuffleStrategy, DeckShuffleStrategy
 
 class Suit(str, Enum):
     SPADES = "♠"
@@ -33,6 +32,12 @@ class Rank(str, Enum):
 
 # 10-value cards for blackjack (10, J, Q, K)
 TEN_VALUE_RANKS = {Rank.TEN, Rank.JACK, Rank.QUEEN, Rank.KING}
+
+# Standard deck order: 1 (Ace), 2, 3, ... 10, K, Q, J per suit
+STANDARD_RANK_ORDER = [
+    Rank.ACE, Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX,
+    Rank.SEVEN, Rank.EIGHT, Rank.NINE, Rank.TEN, Rank.KING, Rank.QUEEN, Rank.JACK,
+]
 
 
 @dataclass(frozen=True)
@@ -104,7 +109,8 @@ def raw_total(cards: List[Card]) -> int:
 
 
 def make_deck() -> List[Card]:
-    return [Card(s, r) for s in Suit for r in Rank]
+    """Return a new deck in standard order: 1, 2, ... 10, K, Q, J per suit."""
+    return [Card(s, r) for s in Suit for r in STANDARD_RANK_ORDER]
 
 
 class Action(str, Enum):
@@ -141,22 +147,40 @@ class PlayerState:
 class Game:
     """Single round: one dealer, positions 1..n_players (N = n_players + 1)."""
 
-    def __init__(self, n_players: int):
+    def __init__(
+        self,
+        n_players: int,
+        *,
+        first_shuffle: DeckShuffleStrategy | None = None,
+        subsequent_shuffle: DeckShuffleStrategy | None = None,
+    ):
         assert n_players >= 1
         self.n_players = n_players
         self.N = n_players + 1  # dealer + players
-        self.deck: List[Card] = []
+        self.deck: List[Card] = make_deck()
         self.players: List[PlayerState] = []
         self.current_turn: int = 1  # 1 to n_players, then 0 for dealer
         self.revealed: bool = False
+        self._first_deal = True
+        if first_shuffle is None or subsequent_shuffle is None:
+            default = SwooshShuffleStrategy()
+            self._first_shuffle = first_shuffle if first_shuffle is not None else default
+            self._subsequent_shuffle = subsequent_shuffle if subsequent_shuffle is not None else default
+        else:
+            self._first_shuffle = first_shuffle
+            self._subsequent_shuffle = subsequent_shuffle
 
     def _seat_order_for_deal(self) -> List[int]:
         """Order to deal: first card to 1, 2, ..., n_players, 0; then same again."""
         return list(range(1, self.N)) + [0]
 
     def deal(self) -> None:
-        self.deck = make_deck()
-        random.shuffle(self.deck)
+        # self.deck = make_deck()
+        if self._first_deal:
+            self._first_shuffle.shuffle(self.deck, is_first=True)
+            self._first_deal = False
+        else:
+            self._subsequent_shuffle.shuffle(self.deck, is_first=False)
         self.players = [PlayerState(position=k) for k in range(self.N)]
         order = self._seat_order_for_deal()
         for _ in range(2):
