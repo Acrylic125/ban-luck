@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""
+Train the Player agent using Monte Carlo control, then save the policy.
+
+Usage:
+  python train_agent.py [OPTIONS]
+  python train_agent.py --n-players 3 --episodes 500000 --epsilon 0.1
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from agent import mc_control, policy_to_dict
+
+DEFAULT_EPISODES = 500_000
+DEFAULT_EPSILON = 0.1
+DEFAULT_N_PLAYERS = 2
+ACTION_NAMES = ["hold", "draw 1", "draw 2", "draw 3"]
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Train the Player agent (Monte Carlo control).",
+    )
+    p.add_argument(
+        "-n",
+        "--n-players",
+        type=int,
+        default=DEFAULT_N_PLAYERS,
+        metavar="N",
+        help=f"Number of players (default: {DEFAULT_N_PLAYERS})",
+    )
+    p.add_argument(
+        "-e",
+        "--episodes",
+        type=int,
+        default=DEFAULT_EPISODES,
+        metavar="N",
+        help=f"Number of training episodes (default: {DEFAULT_EPISODES})",
+    )
+    p.add_argument(
+        "--epsilon",
+        type=float,
+        default=DEFAULT_EPSILON,
+        metavar="F",
+        help=f"Epsilon for epsilon-greedy exploration (default: {DEFAULT_EPSILON})",
+    )
+    args = p.parse_args()
+    if args.n_players < 1 or args.n_players > 5:
+        p.error("--n-players must be between 1 and 5")
+    if args.episodes < 1:
+        p.error("--episodes must be positive")
+    if not 0 <= args.epsilon <= 1:
+        p.error("--epsilon must be between 0 and 1")
+    return args
+
+
+def main() -> None:
+    args = parse_args()
+    n_players = args.n_players
+    num_episodes = args.episodes
+    epsilon = args.epsilon
+    policy_path = Path(__file__).resolve().parent / f"agent_policy_{n_players}.json"
+
+    print("Training Player agent (Monte Carlo control)...")
+    print(f"  n_players={n_players}, agent_position=1, num_episodes={num_episodes}, epsilon={epsilon}")
+    Q, policy = mc_control(
+        n_players=n_players,
+        agent_position=1,
+        num_episodes=num_episodes,
+        epsilon=epsilon,
+    )
+
+    # Save policy
+    data = policy_to_dict(policy)
+    with open(policy_path, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"  Policy saved to {policy_path}")
+
+    # Print sample Q and policy
+    print("\nSample Q(s,a) and policy (value, usable_ace) -> action:")
+    for state in sorted(policy.keys(), key=lambda s: (s[0], s[1])):
+        if state[0] in (12, 16, 17, 20, 21) and state[1] in (0, 1):
+            act = policy[state]
+            qs = Q[state]
+            print(f"  {state} -> {ACTION_NAMES[act]}  (Q: {[round(q, 2) for q in qs]})")
+    print("Done.")
+
+
+if __name__ == "__main__":
+    main()
