@@ -22,7 +22,7 @@ from dealer import (
     dealer_action_to_enum,
     get_dealer_legal_actions,
 )
-from players import SimplePlayer
+from players import Player, SimplePlayer
 from agent import state_from_hand, policy_to_dict
 from deck import DeckCuttingStrategy, SwooshShuffleStrategy
 
@@ -35,7 +35,7 @@ def run_episode_dealer(
     game: Game,
     deck: list,
     get_dealer_action: Callable[[str], int],
-    player: SimplePlayer,
+    player: Player,
 ) -> list[tuple[str, int, int]]:
     """Run one episode: deal, all players act (same strategy), dealer acts until REVEAL. Return (state, action, reward) for dealer."""
     game.deal(deck)
@@ -90,11 +90,13 @@ def mc_control_dealer(
     n_players: int = 2,
     num_episodes: int = 500_000,
     epsilon: float = 0.1,
+    player: Player | None = None,
 ) -> tuple[dict[str, list[float]], dict[str, int]]:
     """Monte Carlo control for dealer. Returns (Q, policy) with state str -> [Q(s,0), Q(s,1)] and best action."""
+    if player is None:
+        player = SimplePlayer()
     game = Game(n_players=n_players)
     deck = make_deck()
-    player = SimplePlayer()
 
     Q_sum: dict[str, list[float]] = defaultdict(lambda: [0.0] * DEALER_NUM_ACTIONS)
     Q_count: dict[str, list[int]] = defaultdict(lambda: [0] * DEALER_NUM_ACTIONS)

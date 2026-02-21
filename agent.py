@@ -149,11 +149,14 @@ def mc_control(
     agent_position: int = 1,
     num_episodes: int = 500_000,
     epsilon: float = 0.1,
-) -> tuple[dict[str, int, list[float]], dict[str, int]]:
+    dealer: Dealer | None = None,
+) -> tuple[dict[str, list[float]], dict[str, int]]:
     """
     Monte Carlo control (first-visit) with epsilon-greedy policy.
     Returns (Q, policy) where Q[state] = [Q(s,0), Q(s,1), Q(s,2), Q(s,3)] and policy[state] = best action.
     """
+    if dealer is None:
+        dealer = SimpleDealer()
     game = Game(n_players=n_players)
     deck = make_deck()
 
@@ -184,7 +187,7 @@ def mc_control(
     for ep in range(num_episodes):
         if ep % p10 == 0:
             print(f"Episode {ep} of {num_episodes} ({ep/num_episodes*100:.1f}%)")
-        state_actions_rewards = run_episode(agent_position, get_action, deck, game)
+        state_actions_rewards = run_episode(agent_position, get_action, deck, game, dealer=dealer)
         for state, action, reward in state_actions_rewards:
             Q_sum[state][action] += reward
             Q_count[state][action] += 1
