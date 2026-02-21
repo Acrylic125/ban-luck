@@ -23,7 +23,7 @@ from game import (
     make_deck,
 )
 from game import Card  # noqa: F401 - for type hints
-from deck import DeckCuttingStrategy, SwooshShuffleStrategy
+from deck import DeckCuttingStrategy, DeckShuffleStrategy, SwooshShuffleStrategy
 from dealer import Dealer, SimpleDealer
 from state import (
     NUM_ACTIONS,
@@ -126,11 +126,9 @@ def mc_control(
     num_episodes: int = 500_000,
     epsilon: float = 0.1,
     dealer: Dealer | None = None,
+    first_shuffle_strategy: DeckShuffleStrategy = SwooshShuffleStrategy(),
+    subsequent_shuffle_strategy: DeckShuffleStrategy = SwooshShuffleStrategy(),
 ) -> tuple[dict[str, list[float]], dict[str, int]]:
-    """
-    Monte Carlo control (first-visit) with epsilon-greedy policy.
-    Returns (Q, policy) where Q[state] = [Q(s,0), Q(s,1), Q(s,2), Q(s,3)] and policy[state] = best action.
-    """
     if dealer is None:
         dealer = SimpleDealer()
     game = Game(n_players=n_players)
@@ -158,7 +156,7 @@ def mc_control(
         best_a = max(legal, key=lambda a: qs[a] / q_counts[a] if q_counts[a] > 0 else float("-inf"))
         return best_a
 
-    SwooshShuffleStrategy().shuffle(deck, is_first=True)
+    first_shuffle_strategy.shuffle(deck, is_first=True)
     p10 = (num_episodes // 10)
     for ep in range(num_episodes):
         if ep % p10 == 0:
@@ -168,7 +166,7 @@ def mc_control(
             Q_sum[state][action] += reward
             Q_count[state][action] += 1
         game.soft_reset()
-        DeckCuttingStrategy().shuffle(deck, is_first=False)
+        subsequent_shuffle_strategy.shuffle(deck, is_first=False)
 
     # Convert to Q values (means) and derive greedy policy
     Q: dict[str, list[float]] = {}
