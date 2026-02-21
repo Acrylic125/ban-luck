@@ -16,7 +16,7 @@ from deck import DeckCuttingStrategy, SwooshShuffleStrategy
 from players import Player, SimplePlayer, PolicyBasedPlayer
 from dealer import Dealer, PolicyBasedDealer, SimpleDealer
 from agent import mc_control, policy_to_dict
-from train_dealer_agent import mc_control_dealer
+from train_dealer import mc_control_dealer
 from simulation import run_game
 
 NUM_EVAL_GAMES = 500
