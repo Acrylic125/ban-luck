@@ -15,61 +15,15 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from scipy import stats
 
-from game import Action, Card, Game, is_natural_blackjack, make_deck
+from game import Card, Game, make_deck
 from deck import DeckCuttingStrategy, SwooshShuffleStrategy
 from players import SimplePlayer
 from dealer import Dealer, PolicyBasedDealer, SimpleDealer
 from agent import policy_from_dict
+from simulation import run_game
 
 NUM_RUNS_DEFAULT = 100
 N_PLAYERS_DEFAULT = 2
-
-
-def run_game_dealer_strategy(
-    game: Game,
-    player: SimplePlayer,
-    dealer: Dealer,
-    *,
-    deck: list[Card],
-) -> list[float]:
-    """Run one game with the given player and dealer strategies. Returns per-seat rewards (dealer + players)."""
-    game.deal(deck)
-
-    for _ in range(game.N):
-        current = game.current_turn
-        p = game.players[current]
-
-        if current != 0:
-            if is_natural_blackjack(p.hand):
-                game.advance_turn()
-                continue
-            while True:
-                p = game.players[current]
-                if p.reward is not None:
-                    break
-                act, _ = player.choose_action(game, current)
-                if act == Action.HOLD:
-                    game.advance_turn()
-                    break
-                game.apply_draw(current, 1)
-                if game.players[current].reward is not None:
-                    game.advance_turn()
-                    break
-            continue
-
-        if current == 0:
-            while True:
-                act = dealer.choose_action(game)
-                if act == Action.REVEAL:
-                    game.dealer_reveal_all()
-                    break
-                if act == Action.DRAW:
-                    game.apply_draw(0, 1)
-                else:
-                    game.dealer_reveal_all()
-                    break
-
-    return [game.get_player_reward(k) or 0 for k in range(game.N)]
 
 
 def parse_args() -> argparse.Namespace:
@@ -127,12 +81,12 @@ def main() -> None:
     first_shuffle.shuffle(deck, is_first=True)
     for run in range(num_runs):
         rewards_policy_runs.append(
-            run_game_dealer_strategy(game, player, policy_dealer, deck=deck)
+            run_game(game, player, policy_dealer, deck)
         )
         game.soft_reset()
         subsequent_shuffle.shuffle(deck, is_first=False)
         rewards_simple_runs.append(
-            run_game_dealer_strategy(game, player, simple_dealer, deck=deck)
+            run_game(game, player, simple_dealer, deck)
         )
         game.soft_reset()
         subsequent_shuffle.shuffle(deck, is_first=False)
