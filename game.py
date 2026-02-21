@@ -99,15 +99,24 @@ def _min_total(cards: List[Card]) -> int:
         t += 1 if isinstance(v, tuple) else v
     return t
 
+NATURAL_HAND_NONE = 0
+NATURAL_HAND_ACE_ACE = 1
+NATURAL_HAND_ACE_TEN = 2
+
+def get_natural_hand(cards: List[Card]) -> int:
+    if len(cards) != 2:
+        return NATURAL_HAND_NONE
+    if cards[0].is_ace() and cards[1].is_ace():
+        return NATURAL_HAND_ACE_ACE
+    if cards[0].is_ace() and cards[1].is_ten_value():
+        return NATURAL_HAND_ACE_TEN
+    if cards[0].is_ten_value() and cards[1].is_ace():
+        return NATURAL_HAND_ACE_TEN
+    return NATURAL_HAND_NONE
 
 def is_natural_blackjack(cards: List[Card]) -> bool:
     """True if exactly two cards: Ace and a 10-value (10, J, Q, K) OR Ace and an Ace."""
-    if len(cards) != 2:
-        return False
-    a, b = cards[0], cards[1]
-    if a.is_ace() and b.is_ace():
-        return True
-    return (a.is_ace() and b.is_ten_value()) or (b.is_ace() and a.is_ten_value())
+    return get_natural_hand(cards) != NATURAL_HAND_NONE
 
 def is_bust(cards: List[Card]) -> bool:
     """True if minimum total (all aces as 1) > 21."""
@@ -175,11 +184,20 @@ class Game:
         self.current_turn = 1
         self.revealed = False
         # Check natural blackjacks (only for players, not dealer) after deal
+        dealer = self.players[0]
         for k in range(1, self.N):
             p = self.players[k]
-            if is_natural_blackjack(p.hand):
+            natural_hand = get_natural_hand(p.hand)
+            if natural_hand == NATURAL_HAND_ACE_ACE:
+                p.reward = 3
+                if dealer.reward is None:
+                    dealer.reward = 0
+                dealer.reward -= 3
+            elif natural_hand == NATURAL_HAND_ACE_TEN:
                 p.reward = 2
-                p.done = True
+                if dealer.reward is None:
+                    dealer.reward = 0
+                dealer.reward -= 2
 
     def turn_order(self) -> List[int]:
         """Order of turns: 1, 2, ..., n_players, then 0 (dealer)."""
@@ -205,14 +223,20 @@ class Game:
                 p.hand.append(self.deck.pop())
             else:
                 raise ValueError("No cards left in deck")
-        total = best_hand_value(p.hand)
-        if len(p.hand) >= 5:
-            if is_bust(p.hand):
-                p.reward = -2
-            elif total == 21:
-                p.reward = 3
-            else:
-                p.reward = 2
+        # total = best_hand_value(p.hand)
+        # dealer = self.players[0]
+        # if len(p.hand) >= 5:
+        #     # Dealer's own draw outcome is not a standalone reward (zero-sum: only from comparisons)
+        #     if position != 0:
+        #         if is_bust(p.hand):
+        #             p.reward = -2
+        #         elif total == 21:
+        #             p.reward = 3
+        #         else:
+        #             p.reward = 2
+        #         if dealer.reward is None:
+        #             dealer.reward = 0
+        #         dealer.reward -= p.reward
 
     def dealer_reveal_position(self, position: int) -> None:
         dealer = self.players[0]
@@ -220,7 +244,6 @@ class Game:
         p = self.players[position]
         # Already revealed
         if p.reward is not None:
-            # print(f"Player {position} already revealed with reward {p.reward}")
             return
         # Ensure dealer has a reward set.
         if dealer.reward is None:
@@ -238,6 +261,8 @@ class Game:
             # Check if player hand is >= 5.
             if len(p.hand) >= 5:
                 reward += 1
+            if player_value > 21:
+                reward *= -1
             p.reward = reward
             dealer.reward -= reward
             return
@@ -247,6 +272,8 @@ class Game:
             # Check if dealer hand is >= 5.
             if len(dealer.hand) >= 5:
                 reward += 1
+            if dealer_value > 21:
+                reward *= -1
             p.reward = -reward
             dealer.reward += reward
             return
@@ -267,33 +294,18 @@ class Game:
         then reset each player state and current_turn. Use before the next round when
         reusing the same game instance.
         """
-        player_order = list(range(self.N))
+        player_order = list(range(self.N + 1))
         random.shuffle(player_order)
+        reward_sum = 0
         for k in player_order:
             p = self.players[k]
+            reward_sum += p.reward
             for c in p.hand:
                 self.deck.append(c)
             p.hand.clear()
             p.reward = None
-            p.done = False
+        if reward_sum != 0:
+            raise ValueError(f"Reward sum is not 0: {reward_sum}")
         self.current_turn = 1
         self.revealed = False
-
-    def deal_round(self) -> None:
-        """
-        Deal 2 cards to each player from the current deck (no shuffle).
-        Assumes deck is full and player states were cleared (e.g. after soft_reset).
-        """
-        order = self._seat_order_for_deal()
-        for _ in range(2):
-            for k in order:
-                self.players[k].hand.append(self.deck.pop())
-        self.current_turn = 1
-        self.revealed = False
-        for k in range(1, self.N):
-            p = self.players[k]
-            if is_natural_blackjack(p.hand):
-                p.reward = 2
-                p.done = True
-
 

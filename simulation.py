@@ -17,6 +17,7 @@ def run_game(
     dealer: Dealer,
     deck: list[Card],
 ) -> list[float]:
+    print("TTTTT")
     game.deal(deck)
     for _ in range(game.N):
         current = game.current_turn
@@ -34,9 +35,13 @@ def run_game(
                     game.advance_turn()
                     break
                 game.apply_draw(current, 1)
-                if game.players[current].reward is not None:
+                if len(p.hand) >= 5:
+                    game.dealer_reveal_position(current)
                     game.advance_turn()
                     break
+                # if game.players[current].reward is not None:
+                #     game.advance_turn()
+                #     break
             continue
         if current == 0:
             while True:
