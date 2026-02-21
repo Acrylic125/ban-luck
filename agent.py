@@ -18,34 +18,22 @@ from typing import Callable
 from game import (
     Game,
     Action,
-    best_hand_value,
     is_natural_blackjack,
-    _min_total,
     dealer_bot_action,
     make_deck,
 )
 from game import Card  # noqa: F401 - for type hints
 from deck import DeckCuttingStrategy, SwooshShuffleStrategy
 
-
-# --- State representation (at decision time: 2 cards) ---
-
-def has_usable_ace(cards: list) -> bool:
-    """True if hand has an ace counted as 11 in the best total."""
-    if not cards:
-        return False
-    total_min = _min_total(cards)
-    best = best_hand_value(cards)
-    return best != total_min and total_min + 10 <= 21
-
 def serialize_card_state(card: Card) -> str:
     value = card.blackjack_value()
     if isinstance(value, tuple):
         return f"{value[0]}_{value[1]}"
     return str(value)
-    # return f"{card.rank}{card.suit}"
 
 def state_from_hand(cards: list[Card]) -> str:
+    # It should not matter the order of the cards or the value it adds up to.
+    # As such, we treat the same hand as the same state.
     v = [serialize_card_state(c) for c in cards]
     v.sort()
     return ",".join(v)
@@ -149,12 +137,12 @@ def mc_control(
     Q_count: dict[str, list[int]] = defaultdict(lambda: [0] * NUM_ACTIONS)
 
     def get_action(state: str) -> int:
-        # Check if Q_sum and Q_count have the state. If not, add it.
+        num_cards = state.count(",") + 1
         if state not in Q_sum:
             Q_sum[state] = [0.0] * NUM_ACTIONS
         if state not in Q_count:
             Q_count[state] = [0] * NUM_ACTIONS
-        legal = get_legal_actions(2)
+        legal = get_legal_actions(num_cards)
         # Policy action = 1 - e - e / (actions_count)
         # Other actions = e / (actions_count)
         true_epsilon = epsilon - (epsilon / len(legal))
@@ -187,7 +175,8 @@ def mc_control(
             for a in range(NUM_ACTIONS)
         ]
         Q[state] = q_list
-        legal = get_legal_actions(2)
+        num_cards = state.count(",") + 1
+        legal = get_legal_actions(num_cards)
         policy[state] = max(legal, key=lambda a: q_list[a])
 
     return Q, policy
@@ -200,26 +189,18 @@ def make_agent_policy(
     """Return a callable that chooses action from learned policy (with optional exploration)."""
 
     def get_action(state: str) -> int:
-        legal = get_legal_actions(2)
+        num_cards = state.count(",") + 1
+        legal = get_legal_actions(num_cards)
         if epsilon > 0 and random.random() < epsilon:
             return random.choice(legal)
         return policy.get(state, 0)
 
     return get_action
 
-def policy_to_dict(policy: dict[tuple[int, int], int]) -> dict[str, int]:
-    """Serialize policy to JSON-friendly dict: keys like '12_0' for (12, 0)."""
-    return {f"{s[0]}_{s[1]}": a for s, a in policy.items()}
+def policy_to_dict(policy: dict[str, int]) -> dict[str, int]:
+    """Serialize policy to JSON-friendly dict. State keys are full hand strings (e.g. '1_11,10' or '2,3,5')."""
+    return dict(policy)
 
-def policy_from_dict(data: dict[str, int]) -> dict[tuple[int, int], int]:
-    """Deserialize policy from dict."""
-    policy: dict[tuple[int, int], int] = {}
-    for k, a in data.items():
-        parts = k.split("_")
-        if len(parts) == 2:
-            try:
-                state = (int(parts[0]), int(parts[1]))
-                policy[state] = a
-            except ValueError:
-                pass
-    return policy
+def policy_from_dict(data: dict[str, int]) -> dict[str, int]:
+    """Deserialize policy from dict (string state -> action)."""
+    return dict(data)

@@ -72,23 +72,13 @@ def main() -> None:
         epsilon=epsilon,
     )
 
-    _policy = policy.copy()
-    policy = {}
-    for state in sorted(_policy.keys(), key=lambda s: (s[0], s[1])):
-        policy[state] = _policy[state]
+    # Sort by state string for reproducible output (2-card, then 3-card, then 4-card hands)
+    policy = dict(sorted(policy.items(), key=lambda x: (len(x[0]), x[0])))
     # Save policy
     data = policy_to_dict(policy)
     with open(policy_path, "w") as f:
         json.dump(data, f, indent=2)
     print(f"  Policy saved to {policy_path}")
-
-    # Print sample Q and policy
-    # print("\nSample Q(s,a) and policy (value, usable_ace) -> action:")
-    # for state in sorted(policy.keys(), key=lambda s: (s[0], s[1])):
-    #     if state[0] in (12, 16, 17, 20, 21) and state[1] in (0, 1):
-    #         act = policy[state]
-    #         qs = Q[state]
-    #         print(f"  {state} -> {ACTION_NAMES[act]}  (Q: {[round(q, 2) for q in qs]})")
     print("Done.")
 
 
