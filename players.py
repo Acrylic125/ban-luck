@@ -35,31 +35,31 @@ class SimplePlayer(Player):
     up to 3 cards (no REVEAL; that is dealer-only).
     """
 
-    def choose_action(self, game: Game, position: int) -> tuple[Action, int]:
+    def choose_action(self, game: Game, position: int) -> Action:
         p = game.players[position]
         val = best_hand_value(p.hand)
         if val >= 17:
-            return Action.HOLD, 0
+            return Action.HOLD
         cards_left = 5 - len(p.hand)
         if cards_left == 0:
-            return Action.HOLD, 0
-        return Action.DRAW, min(3, cards_left)
+            return Action.HOLD
+        return Action.DRAW
 
 
 class PolicyBasedPlayer(Player):
     """
-    Uses a learned policy: state (hand_value, usable_ace) -> action index.
+    Uses a learned policy: state string (hand card values) -> action index.
     Expects the same policy format as the MC-trained agent (e.g. from agent_policy.json).
     """
 
     def __init__(
         self,
-        policy: dict[tuple[int, int], int],
+        policy: dict[str, int],
         *,
         epsilon: float = 0.0,
     ):
         """
-        :param policy: state (value, usable_ace) -> action index (0=hold, 1–3=draw 1–3)
+        :param policy: state string (from state_from_hand) -> action index (0=hold, 1–3=draw 1–3)
         :param epsilon: probability of random action (0 = greedy)
         """
         self._policy = policy

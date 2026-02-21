@@ -30,55 +30,44 @@ def run_game_all_same_strategy(
     *,
     deck: list[Card],
 ) -> float:
-    """
-    Run one game. All non-dealer players use the same strategy.
-    Uses the shared game instance: first round uses a new deck and first_shuffle; later rounds use soft_reset + subsequent_shuffle + deal_round.
-    Returns the mean reward per player (over positions 1..n_players).
-    """
-    # random.seed(seed)
-    # if is_first_round:
-    #     deck = make_deck()
-    #     first_shuffle.shuffle(deck, is_first=True)
-    #     game.deal(deck)
-    # else:
-    #     game.soft_reset()
-    #     subsequent_shuffle.shuffle(game.deck, is_first=False)
-    #     game.deal_round()
     game.deal(deck)
 
-    while not game.all_turns_done():
+    while True:
         current = game.current_turn
         p = game.players[current]
 
-        if p.done:
+        if current == 0:
+            # Dealer: draw one at a time until REVEAL
+            while True:
+                act = dealer_bot_action(game)
+                if act == Action.REVEAL:
+                    game.dealer_reveal_all()
+                    break
+                game.apply_draw(0, 1)
+            break
+
+        if p.reward is not None:
             game.advance_turn()
             continue
 
-        if current == 0:
-            act, num = dealer_bot_action(game)
-            if act == Action.REVEAL:
-                game.dealer_reveal()
-                break
-            if act == Action.DRAW:
-                game.apply_draw(0, num)
-            else:
-                game.apply_hold(0)
-            game.dealer_reveal()
-            break
-
-        # All players use the same strategy
         if is_natural_blackjack(p.hand):
             game.advance_turn()
             continue
-        act, num = player.choose_action(game, current)
-        if act == Action.HOLD:
-            game.apply_hold(current)
-        else:
-            game.apply_draw(current, num)
-        game.advance_turn()
 
-    if not game.revealed:
-        game.dealer_reveal()
+        # Player turn: decide each time (hold or draw one) until hold or done
+        while True:
+            p = game.players[current]
+            if p.reward is not None:
+                break
+            act = player.choose_action(game, current)
+            if act == Action.HOLD:
+                game.advance_turn()
+                break
+            game.apply_draw(current, 1)
+            if game.players[current].reward is not None:
+                game.advance_turn()
+                break
+        continue
 
     rewards = [
         game.get_player_reward(k) or 0
@@ -138,25 +127,20 @@ def main() -> None:
     subsequent_shuffle = DeckCuttingStrategy()
 
     deck = make_deck()
-    first_shuffle.shuffle(deck, is_first=True)
-    for run in range(num_runs):
-        rewards_policy.append(
-            run_game_all_same_strategy(
-                game,
-                policy_player,
-                deck=deck,
+    player_rewards = [(policy_player, rewards_policy), (simple_player, rewards_simple)]
+    for player, rewards in player_rewards:
+        cur_deck = deck.copy()
+        first_shuffle.shuffle(cur_deck, is_first=True)
+        for run in range(num_runs):
+            rewards.append(
+                run_game_all_same_strategy(
+                    game,
+                    player,
+                    deck=cur_deck,
+                )
             )
-        )
-        game.soft_reset()
-        rewards_simple.append(
-            run_game_all_same_strategy(
-                game,
-                simple_player,
-                deck=deck,
-            )
-        )
-        game.soft_reset()
-        subsequent_shuffle.shuffle(deck, is_first=False)
+            game.soft_reset()
+            subsequent_shuffle.shuffle(cur_deck, is_first=False)
 
     # Stats
     def mean(xs: list[float]) -> float:
