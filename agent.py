@@ -136,7 +136,7 @@ def mc_control(
     agent_position: int = 1,
     num_episodes: int = 500_000,
     epsilon: float = 0.1,
-) -> tuple[dict[tuple[int, int], list[float]], dict[tuple[int, int], int]]:
+) -> tuple[dict[str, int, list[float]], dict[str, int]]:
     """
     Monte Carlo control (first-visit) with epsilon-greedy policy.
     Returns (Q, policy) where Q[state] = [Q(s,0), Q(s,1), Q(s,2), Q(s,3)] and policy[state] = best action.
@@ -145,10 +145,15 @@ def mc_control(
     deck = make_deck()
 
     # Q[s][a] = average return for (s,a). We store sum and count for incremental update.
-    Q_sum: dict[tuple[int, int], list[float]] = defaultdict(lambda: [0.0] * NUM_ACTIONS)
-    Q_count: dict[tuple[int, int], list[int]] = defaultdict(lambda: [0] * NUM_ACTIONS)
+    Q_sum: dict[str, list[float]] = defaultdict(lambda: [0.0] * NUM_ACTIONS)
+    Q_count: dict[str, list[int]] = defaultdict(lambda: [0] * NUM_ACTIONS)
 
     def get_action(state: str) -> int:
+        # Check if Q_sum and Q_count have the state. If not, add it.
+        if state not in Q_sum:
+            Q_sum[state] = [0.0] * NUM_ACTIONS
+        if state not in Q_count:
+            Q_count[state] = [0] * NUM_ACTIONS
         legal = get_legal_actions(2)
         # Policy action = 1 - e - e / (actions_count)
         # Other actions = e / (actions_count)
@@ -174,8 +179,8 @@ def mc_control(
         DeckCuttingStrategy().shuffle(deck, is_first=False)
 
     # Convert to Q values (means) and derive greedy policy
-    Q: dict[tuple[int, int], list[float]] = {}
-    policy: dict[tuple[int, int], int] = {}
+    Q: dict[str, list[float]] = {}
+    policy: dict[str, int] = {}
     for state in Q_sum:
         q_list = [
             Q_sum[state][a] / Q_count[state][a] if Q_count[state][a] > 0 else 0.0
@@ -189,12 +194,12 @@ def mc_control(
 
 
 def make_agent_policy(
-    policy: dict[tuple[int, int], int],
+    policy: dict[str, int],
     epsilon: float = 0.0,
-) -> Callable[[tuple[int, int]], int]:
+) -> Callable[[str], int]:
     """Return a callable that chooses action from learned policy (with optional exploration)."""
 
-    def get_action(state: tuple[int, int]) -> int:
+    def get_action(state: str) -> int:
         legal = get_legal_actions(2)
         if epsilon > 0 and random.random() < epsilon:
             return random.choice(legal)
