@@ -83,12 +83,12 @@ def main() -> None:
     print(f"  Policy saved to {policy_path}")
 
     # Print sample Q and policy
-    print("\nSample Q(s,a) and policy (value, usable_ace) -> action:")
-    for state in sorted(policy.keys(), key=lambda s: (s[0], s[1])):
-        if state[0] in (12, 16, 17, 20, 21) and state[1] in (0, 1):
-            act = policy[state]
-            qs = Q[state]
-            print(f"  {state} -> {ACTION_NAMES[act]}  (Q: {[round(q, 2) for q in qs]})")
+    # print("\nSample Q(s,a) and policy (value, usable_ace) -> action:")
+    # for state in sorted(policy.keys(), key=lambda s: (s[0], s[1])):
+    #     if state[0] in (12, 16, 17, 20, 21) and state[1] in (0, 1):
+    #         act = policy[state]
+    #         qs = Q[state]
+    #         print(f"  {state} -> {ACTION_NAMES[act]}  (Q: {[round(q, 2) for q in qs]})")
     print("Done.")
 
 

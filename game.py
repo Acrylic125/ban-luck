@@ -66,7 +66,7 @@ class Card:
 
 def best_hand_value(cards: List[Card]) -> int:
     # We evaluate all possibilities.
-    interpretations: List[List[int]] = []
+    interpretations: List[List[int]] = [[]]
 
     for c in cards:
         v = c.blackjack_value()
@@ -220,7 +220,7 @@ class Game:
         p = self.players[position]
         # Already revealed
         if p.reward is not None:
-            print(f"Player {position} already revealed with reward {p.reward}")
+            # print(f"Player {position} already revealed with reward {p.reward}")
             return
         # Ensure dealer has a reward set.
         if dealer.reward is None:
@@ -255,8 +255,8 @@ class Game:
         for k in range(1, self.N):
             self.dealer_reveal_position(k)
 
-    def all_turns_done(self) -> bool:
-        return all(self.players[k].done for k in self.turn_order())
+    # def all_turns_done(self) -> bool:
+    #     return all(self.players[k].reward is not None for k in self.turn_order())
 
     def get_player_reward(self, position: int) -> Optional[int]:
         return self.players[position].reward if 0 <= position < self.N else None

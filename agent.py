@@ -21,7 +21,6 @@ from game import (
     best_hand_value,
     is_natural_blackjack,
     _min_total,
-    bot_hold_or_draw,
     dealer_bot_action,
     make_deck,
 )
@@ -39,17 +38,17 @@ def has_usable_ace(cards: list) -> bool:
     best = best_hand_value(cards)
     return best != total_min and total_min + 10 <= 21
 
+def serialize_card_state(card: Card) -> str:
+    value = card.blackjack_value()
+    if isinstance(value, tuple):
+        return f"{value[0]}_{value[1]}"
+    return str(value)
+    # return f"{card.rank}{card.suit}"
 
-def state_from_hand(cards: list[Card]) -> tuple[int, int]:
-    """
-    Encode current hand as (hand_value, usable_ace).
-    hand_value in [4, 21], usable_ace in {0, 1}.
-    Used only when agent has exactly 2 cards (decision time).
-    """
-    value = best_hand_value(cards)
-    usable = 1 if has_usable_ace(cards) else 0
-    return (value, usable)
-
+def state_from_hand(cards: list[Card]) -> str:
+    v = [serialize_card_state(c) for c in cards]
+    v.sort()
+    return ",".join(v)
 
 # Actions: 
 NUM_ACTIONS = 4  # hold 0, draw 1, draw 2, draw 3
@@ -69,40 +68,29 @@ def get_legal_actions(num_cards: int) -> list[int]:
     return [0] + list(range(1, max_draw + 1))
 
 
-# --- Episode runner ---
-
 def run_episode(
     agent_position: int,
-    get_agent_action: Callable[[tuple[int, int]], int],
+    get_agent_action: Callable[[str], int],
     deck: list[Card],
     game: Game,
-) -> tuple[tuple[int, int], int, int]:
-    """
-    Run one episode: deal, agent acts when it's their turn, others and dealer use bots.
-    Returns (state, action, reward) for the agent. If agent had natural blackjack, action is -1.
-    """
+) -> list[tuple[int, int], int, int]:
     assert len(deck) == 52
     game.deal(deck)
 
-    agent_state: tuple[int, int] | None = None
-    agent_action: int = -1
+    agent_state_acitons: list[tuple[str, int]] = []
 
-    while not game.all_turns_done():
+    # while not game.all_turns_done():
+    for _ in range(game.N):
         current = game.current_turn
         p = game.players[current]
-
-        # if p.done:
-        #     game.advance_turn()
-        #     continue
 
         # Player
         if current != 0:
             # Agent's turn: decide each time (hold or draw one); repeat until hold or done
             if is_natural_blackjack(p.hand):
-                # Done
+                # Done. 
                 game.advance_turn()
                 continue
-            first_decision = True
             while True:
                 p = game.players[agent_position]
                 if p.reward is not None:
@@ -112,10 +100,8 @@ def run_episode(
                 action = get_agent_action(state)
                 if action not in legal:
                     action = legal[0]
-                if first_decision:
-                    agent_state = state
-                    agent_action = action
-                    first_decision = False
+                if current == agent_position:
+                    agent_state_acitons.append((state, action))
                 act, _num = action_to_hold_or_draw(action)
                 if act == Action.HOLD:
                     game.advance_turn()
@@ -129,36 +115,21 @@ def run_episode(
 
         # Dealer
         if current == 0:
-            act, num = dealer_bot_action(game)
-            if act == Action.REVEAL:
-                game.dealer_reveal()
-                break
-            if act == Action.DRAW:
-                game.apply_draw(0, num)
-            else:
-                game.apply_hold(0)
-            game.dealer_reveal_all(0)
-            break
-
-        # # Other player (bot)
-        # act, num = bot_hold_or_draw(game, current)
-        # if act == Action.HOLD:
-        #     game.apply_hold(current)
-        # else:
-        #     game.apply_draw(current, num)
-        # game.advance_turn()
-
-    if not game.revealed:
-        # For simplicity, we reveal all hands at the end.
-        game.dealer_reveal_all()
+            while True:
+                act = dealer_bot_action(game)
+                if act == Action.REVEAL:
+                    game.dealer_reveal_all()
+                    break
+                if act == Action.DRAW:
+                    game.apply_draw(0, 1)
+                else:
+                    game.dealer_reveal_all()
+                    break
 
     reward = game.get_player_reward(agent_position)
     if reward is None:
-        reward = 0
-    if agent_state is None:
-        # Natural blackjack: no (s,a) to record; we could use (21, 1) and action -1
-        agent_state = (21, 1)
-    return (agent_state, agent_action, reward)
+        raise ValueError("Agent reward is None")
+    return list(map(lambda x: (x[0], x[1], reward), agent_state_acitons))
 
 def mc_control(
     n_players: int = 2,
@@ -177,25 +148,28 @@ def mc_control(
     Q_sum: dict[tuple[int, int], list[float]] = defaultdict(lambda: [0.0] * NUM_ACTIONS)
     Q_count: dict[tuple[int, int], list[int]] = defaultdict(lambda: [0] * NUM_ACTIONS)
 
-    def get_action(state: tuple[int, int]) -> int:
+    def get_action(state: str) -> int:
         legal = get_legal_actions(2)
-        if random.random() < epsilon:
+        # Policy action = 1 - e - e / (actions_count)
+        # Other actions = e / (actions_count)
+        true_epsilon = epsilon - (epsilon / len(legal))
+        if random.random() < true_epsilon:
             return random.choice(legal)
         qs = Q_sum[state]
-        best_a = max(legal, key=lambda a: qs[a] if Q_count[state][a] > 0 else float("-inf"))
+        q_counts = Q_count[state]
+        # Argmax over Q values
+        best_a = max(legal, key=lambda a: qs[a] / q_counts[a] if q_counts[a] > 0 else float("-inf"))
         return best_a
 
     SwooshShuffleStrategy().shuffle(deck, is_first=True)
+    p10 = (num_episodes // 10)
     for ep in range(num_episodes):
-        state, action, reward = run_episode(agent_position, get_action, deck, game)
-        if action < 0:
-            game.soft_reset()
-            DeckCuttingStrategy().shuffle(deck, is_first=False)
-            continue  # natural blackjack; no (s,a) to update
-        # First-visit: this is the only (s,a) in the episode, so return = reward
-        G = reward
-        Q_sum[state][action] += G
-        Q_count[state][action] += 1
+        if ep % p10 == 0:
+            print(f"Episode {ep} of {num_episodes} ({ep/num_episodes*100:.1f}%)")
+        state_actions_rewards = run_episode(agent_position, get_action, deck, game)
+        for state, action, reward in state_actions_rewards:
+            Q_sum[state][action] += reward
+            Q_count[state][action] += 1
         game.soft_reset()
         DeckCuttingStrategy().shuffle(deck, is_first=False)
 
