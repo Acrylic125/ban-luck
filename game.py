@@ -65,22 +65,31 @@ class Card:
 
 
 def best_hand_value(cards: List[Card]) -> int:
-    """Best non-bust total (<=21). If all totals bust, return minimum (soft)."""
-    total = 0
-    aces = 0
+    # We evaluate all possibilities.
+    interpretations: List[List[int]] = []
+
     for c in cards:
         v = c.blackjack_value()
         if isinstance(v, tuple):
-            aces += 1
-            total += 1
+            og = interpretations.copy()
+            new_interpretations = []
+            for i in v:
+                for interpretation in og:
+                    new_interpretations.append([*interpretation, i])
+            interpretations = new_interpretations
         else:
-            total += v
-    # Prefer 11 for aces when it doesn't bust
-    while aces and total + 10 <= 21:
-        total += 10
-        aces -= 1
-    return total
-
+            for interpretation in interpretations:
+                interpretation.append(v)
+    
+    assert interpretations
+    best = sum(interpretations[0])
+    for interpretation in interpretations:
+        s = sum(interpretation)
+        if s == 21:
+            return 21
+        if s > best and s <= 21:
+            best = s
+    return best
 
 def _min_total(cards: List[Card]) -> int:
     """Minimum total (all aces as 1)."""
@@ -92,12 +101,13 @@ def _min_total(cards: List[Card]) -> int:
 
 
 def is_natural_blackjack(cards: List[Card]) -> bool:
-    """True if exactly two cards: Ace and a 10-value (10, J, Q, K)."""
+    """True if exactly two cards: Ace and a 10-value (10, J, Q, K) OR Ace and an Ace."""
     if len(cards) != 2:
         return False
     a, b = cards[0], cards[1]
+    if a.is_ace() and b.is_ace():
+        return True
     return (a.is_ace() and b.is_ten_value()) or (b.is_ace() and a.is_ten_value())
-
 
 def is_bust(cards: List[Card]) -> bool:
     """True if minimum total (all aces as 1) > 21."""
@@ -123,11 +133,11 @@ class Action(str, Enum):
 @dataclass
 class PlayerState:
     """State for one seat (dealer or player)."""
-    position: int  # k: 0 = dealer, 1..N-1 = players
+    # k: 0 = dealer, 1..N-1 = players
+    position: int  
     hand: List[Card] = field(default_factory=list)
-    reward: Optional[int] = None  # set when outcome is decided
-    done: bool = False  # natural blackjack, or drew (outcome set), or compared at reveal
-    drew_cards: bool = False  # chose to draw (so reward already set if done)
+    # Not None indicates the user already revealed their hand.
+    reward: Optional[int] = None  
 
     def is_dealer(self) -> bool:
         return self.position == 0
@@ -135,15 +145,8 @@ class PlayerState:
     def hand_value(self) -> int:
         return best_hand_value(self.hand)
 
-    def hand_value_for_compare(self) -> int:
-        """Value for comparison. If bust, return 0 so dealer wins vs this hand."""
-        if is_bust(self.hand):
-            return 0
-        return best_hand_value(self.hand)
-
     def can_draw_more(self) -> bool:
-        return len(self.hand) < 5 and not self.done
-
+        return len(self.hand) < 5 and self.reward is None
 
 class Game:
     """Single round: one dealer, positions 1..n_players (N = n_players + 1). Caller passes the deck to deal()."""
@@ -191,12 +194,8 @@ class Game:
         idx = order.index(self.current_turn)
         self.current_turn = order[(idx + 1) % len(order)]
 
-    def apply_hold(self, position: int) -> None:
-        p = self.players[position]
-        p.done = True
-        # Reward set later when dealer reveals (unless they drew)
-        if not p.drew_cards:
-            pass  # reward stays None until reveal
+    # def apply_hold(self, position: int) -> None:
+    #     p = self.players[position]
 
     def apply_draw(self, position: int, num_cards: int) -> None:
         p = self.players[position]
@@ -204,35 +203,57 @@ class Game:
         for _ in range(num_cards):
             if self.deck:
                 p.hand.append(self.deck.pop())
-        p.drew_cards = True
-        p.done = True
-        total = best_hand_value(p.hand)
-        if is_bust(p.hand):
-            p.reward = -2
-        elif total == 21:
-            p.reward = 3
-        else:
-            p.reward = 2
-
-    def dealer_reveal(self) -> None:
-        """Dealer reveals: compare dealer hand to each player who held (not drew)."""
-        self.revealed = True
-        dealer = self.players[0]
-        X = dealer.hand_value_for_compare() if not is_bust(dealer.hand) else 0
-        for k in range(1, self.N):
-            p = self.players[k]
-            if p.reward is not None:
-                continue  # already has reward (natural or drew)
-            if not p.done:
-                continue
-            # Held: compare
-            Y = p.hand_value_for_compare()
-            if X < Y:
-                p.reward = 2 if Y == 21 else 1
-            elif X == Y:
-                p.reward = 0
             else:
-                p.reward = -2 if Y == 21 else -1
+                raise ValueError("No cards left in deck")
+        total = best_hand_value(p.hand)
+        if len(p.hand) >= 5:
+            if is_bust(p.hand):
+                p.reward = -2
+            elif total == 21:
+                p.reward = 3
+            else:
+                p.reward = 2
+
+    def dealer_reveal_position(self, position: int) -> None:
+        dealer = self.players[0]
+        assert position > 0
+        p = self.players[position]
+        # Already revealed
+        if p.reward is not None:
+            print(f"Player {position} already revealed with reward {p.reward}")
+            return
+        # Ensure dealer has a reward set.
+        if dealer.reward is None:
+            dealer.reward = 0
+        # Check if both dealer and player are bust.
+        dealer_value = dealer.hand_value()
+        player_value = p.hand_value()
+        # Tie
+        if (dealer_value > 21 and player_value > 21) or (dealer_value == player_value):
+            p.reward = 0
+            return
+        # Player wins
+        if dealer_value < player_value:
+            reward = 2 if player_value == 21 else 1
+            # Check if player hand is >= 5.
+            if len(p.hand) >= 5:
+                reward += 1
+            p.reward = reward
+            dealer.reward -= reward
+            return
+        # Dealer wins
+        if dealer_value > player_value:
+            reward = 2 if dealer_value == 21 else 1
+            # Check if dealer hand is >= 5.
+            if len(dealer.hand) >= 5:
+                reward += 1
+            p.reward = -reward
+            dealer.reward += reward
+            return
+    
+    def dealer_reveal_all(self) -> None:
+        for k in range(1, self.N):
+            self.dealer_reveal_position(k)
 
     def all_turns_done(self) -> bool:
         return all(self.players[k].done for k in self.turn_order())
@@ -255,7 +276,6 @@ class Game:
             p.hand.clear()
             p.reward = None
             p.done = False
-            p.drew_cards = False
         self.current_turn = 1
         self.revealed = False
 
@@ -277,25 +297,24 @@ class Game:
                 p.done = True
 
 
-def bot_hold_or_draw(game: Game, position: int) -> tuple[Action, int]:
-    """Simple bot for non-dealer players: hold on 17+, else draw up to 3."""
-    p = game.players[position]
-    val = best_hand_value(p.hand)
-    if val >= 17:
-        return Action.HOLD, 0
-    cards_left = 5 - len(p.hand)
-    if cards_left == 0:
-        return Action.HOLD, 0
-    return Action.DRAW, min(3, cards_left)
+# def bot_hold_or_draw(game: Game, position: int) -> tuple[Action, int]:
+#     """Simple bot for non-dealer players: hold on 17+, else draw up to 3."""
+#     p = game.players[position]
+#     val = best_hand_value(p.hand)
+#     if val >= 17:
+#         return Action.HOLD, 0
+#     cards_left = 5 - len(p.hand)
+#     if cards_left == 0:
+#         return Action.HOLD, 0
+#     return Action.DRAW, min(3, cards_left)
 
 
-def dealer_bot_action(game: Game) -> tuple[Action, int]:
-    """Dealer bot: reveal if 17+, else draw to 17+ then reveal."""
+def dealer_bot_action(game: Game) -> Action:
     dealer = game.players[0]
     val = best_hand_value(dealer.hand)
     if val >= 17:
-        return Action.REVEAL, 0
+        return Action.REVEAL
     cards_left = 5 - len(dealer.hand)
     if cards_left == 0:
-        return Action.REVEAL, 0
-    return Action.DRAW, min(3, cards_left)
+        return Action.REVEAL
+    return Action.DRAW

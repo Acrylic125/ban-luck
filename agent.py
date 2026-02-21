@@ -91,33 +91,44 @@ def run_episode(
         current = game.current_turn
         p = game.players[current]
 
-        if p.done:
-            game.advance_turn()
-            continue
+        # if p.done:
+        #     game.advance_turn()
+        #     continue
 
-        if current == agent_position:
-            # Agent's turn
+        # Player
+        if current != 0:
+            # Agent's turn: decide each time (hold or draw one); repeat until hold or done
             if is_natural_blackjack(p.hand):
-                # No choice; reward already set to 2
+                # Done
                 game.advance_turn()
                 continue
-            state = state_from_hand(p.hand)
-            legal = get_legal_actions(len(p.hand))
-            action = get_agent_action(state)
-            if action not in legal:
-                action = legal[0]
-            agent_state = state
-            agent_action = action
-            act, num = action_to_hold_or_draw(action)
-            if act == Action.HOLD:
-                game.apply_hold(agent_position)
-            else:
-                game.apply_draw(agent_position, num)
-            game.advance_turn()
+            first_decision = True
+            while True:
+                p = game.players[agent_position]
+                if p.reward is not None:
+                    break
+                state = state_from_hand(p.hand)
+                legal = get_legal_actions(len(p.hand))
+                action = get_agent_action(state)
+                if action not in legal:
+                    action = legal[0]
+                if first_decision:
+                    agent_state = state
+                    agent_action = action
+                    first_decision = False
+                act, _num = action_to_hold_or_draw(action)
+                if act == Action.HOLD:
+                    game.advance_turn()
+                    break
+                # Draw exactly one card; agent will be asked again unless hand is done
+                game.apply_draw(agent_position, 1)
+                if game.players[agent_position].reward is not None:
+                    game.advance_turn()
+                    break
             continue
 
+        # Dealer
         if current == 0:
-            # Dealer
             act, num = dealer_bot_action(game)
             if act == Action.REVEAL:
                 game.dealer_reveal()
@@ -126,19 +137,20 @@ def run_episode(
                 game.apply_draw(0, num)
             else:
                 game.apply_hold(0)
-            game.dealer_reveal()
+            game.dealer_reveal_all(0)
             break
 
-        # Other player (bot)
-        act, num = bot_hold_or_draw(game, current)
-        if act == Action.HOLD:
-            game.apply_hold(current)
-        else:
-            game.apply_draw(current, num)
-        game.advance_turn()
+        # # Other player (bot)
+        # act, num = bot_hold_or_draw(game, current)
+        # if act == Action.HOLD:
+        #     game.apply_hold(current)
+        # else:
+        #     game.apply_draw(current, num)
+        # game.advance_turn()
 
     if not game.revealed:
-        game.dealer_reveal()
+        # For simplicity, we reveal all hands at the end.
+        game.dealer_reveal_all()
 
     reward = game.get_player_reward(agent_position)
     if reward is None:
