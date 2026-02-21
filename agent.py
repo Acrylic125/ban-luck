@@ -18,6 +18,7 @@ from typing import Callable
 from game import (
     Game,
     Action,
+    best_hand_value,
     is_natural_blackjack,
     dealer_bot_action,
     make_deck,
@@ -56,6 +57,16 @@ def get_legal_actions(num_cards: int) -> list[int]:
     return [0] + list(range(1, max_draw + 1))
 
 
+def _bot_hold_or_draw(game: Game, position: int) -> tuple[Action, int]:
+    """Simple bot for non-agent players: hold on 17+, else draw 1."""
+    p = game.players[position]
+    if best_hand_value(p.hand) >= 17:
+        return Action.HOLD, 0
+    if len(p.hand) >= 5:
+        return Action.HOLD, 0
+    return Action.DRAW, 1
+
+
 def run_episode(
     agent_position: int,
     get_agent_action: Callable[[str], int],
@@ -67,38 +78,49 @@ def run_episode(
 
     agent_state_acitons: list[tuple[str, int]] = []
 
-    # while not game.all_turns_done():
     for _ in range(game.N):
         current = game.current_turn
         p = game.players[current]
 
         # Player
         if current != 0:
-            # Agent's turn: decide each time (hold or draw one); repeat until hold or done
             if is_natural_blackjack(p.hand):
-                # Done. 
                 game.advance_turn()
                 continue
-            while True:
-                p = game.players[agent_position]
-                if p.reward is not None:
-                    break
-                state = state_from_hand(p.hand)
-                legal = get_legal_actions(len(p.hand))
-                action = get_agent_action(state)
-                if action not in legal:
-                    action = legal[0]
-                if current == agent_position:
+            # Only the agent acts when it's their turn; other players use the bot
+            if current == agent_position:
+                while True:
+                    p = game.players[agent_position]
+                    if p.reward is not None:
+                        break
+                    state = state_from_hand(p.hand)
+                    legal = get_legal_actions(len(p.hand))
+                    action = get_agent_action(state)
+                    if action not in legal:
+                        action = legal[0]
                     agent_state_acitons.append((state, action))
-                act, _num = action_to_hold_or_draw(action)
-                if act == Action.HOLD:
-                    game.advance_turn()
-                    break
-                # Draw exactly one card; agent will be asked again unless hand is done
-                game.apply_draw(agent_position, 1)
-                if game.players[agent_position].reward is not None:
-                    game.advance_turn()
-                    break
+                    act, _num = action_to_hold_or_draw(action)
+                    if act == Action.HOLD:
+                        game.advance_turn()
+                        break
+                    game.apply_draw(agent_position, 1)
+                    if game.players[agent_position].reward is not None:
+                        game.advance_turn()
+                        break
+            else:
+                # Non-agent player: use bot (hold on 17+, else draw 1)
+                while True:
+                    p = game.players[current]
+                    if p.reward is not None:
+                        break
+                    act, _num = _bot_hold_or_draw(game, current)
+                    if act == Action.HOLD:
+                        game.advance_turn()
+                        break
+                    game.apply_draw(current, 1)
+                    if game.players[current].reward is not None:
+                        game.advance_turn()
+                        break
             continue
 
         # Dealer
