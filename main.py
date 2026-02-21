@@ -11,10 +11,10 @@ from game import (
     best_hand_value,
     is_bust,
     is_natural_blackjack,
-    bot_hold_or_draw,
-    dealer_bot_action as _dealer_bot_action,
     make_deck,
 )
+from dealer import SimpleDealer
+from players import SimplePlayer
 
 # Optional: trained RL agent (load when user chooses "trained agent")
 AGENT_POLICY_PATH = Path(__file__).resolve().parent / "agent_policy.json"
@@ -75,6 +75,8 @@ def run_cli() -> None:
     SwooshShuffleStrategy().shuffle(deck, is_first=True)
     game = Game(n_players=n_players)
     game.deal(deck)
+    dealer = SimpleDealer()
+    simple_player = SimplePlayer()
 
     print("\n--- Dealt hands (others hidden until reveal) ---")
     for k in game.turn_order():
@@ -86,31 +88,23 @@ def run_cli() -> None:
             print_hand(name, p.hand, hidden=True)
 
     # Turn order: 1, 2, ..., n_players, then 0 (dealer)
-    while not game.all_turns_done():
+    for _ in range(game.N):
         current = game.current_turn
         p = game.players[current]
-        if p.done:
-            game.advance_turn()
-            continue
 
         name = "Dealer" if current == 0 else f"Player {current}"
         print(f"\n--- {name}'s turn ---")
 
         if current == 0:
-            # Dealer acts once: reveal, or hold/draw then we reveal
-            act, num = _dealer_bot_action(game)
-            if act == Action.REVEAL:
-                print("Dealer reveals.")
-                game.dealer_reveal()
-                break
-            if act == Action.DRAW:
-                game.apply_draw(0, num)
-                print(f"Dealer draws {num} card(s). Hand: {' '.join(str(c) for c in game.players[0].hand)}")
-            else:
-                game.apply_hold(0)
-                print("Dealer holds.")
-            game.dealer_reveal()
-            print("Dealer reveals all.")
+            # Dealer: draw one at a time until REVEAL
+            while True:
+                act = dealer.choose_action(game)
+                if act == Action.REVEAL:
+                    print("Dealer reveals.")
+                    game.dealer_reveal_all()
+                    break
+                game.apply_draw(0, 1)
+                print(f"Dealer draws 1 card. Hand: {' '.join(str(c) for c in game.players[0].hand)}")
             break
 
         if current == human_k:
@@ -134,10 +128,10 @@ def run_cli() -> None:
                     action = legal[0]
                 act, num = action_to_hold_or_draw(action)
                 if act == Action.HOLD:
-                    game.apply_hold(current)
+                    game.advance_turn()
                     print("Agent holds.")
                 else:
-                    game.apply_draw(current, num)
+                    game.apply_draw(current, 1)
                     print(f"Agent draws {num} card(s). New hand: {' '.join(str(c) for c in p.hand)}")
                     print(f"Value: {best_hand_value(p.hand)}. Reward: {p.reward}.")
                 game.advance_turn()
@@ -145,7 +139,7 @@ def run_cli() -> None:
             while True:
                 choice = input("Hold or Draw? (h/d): ").strip().lower()
                 if choice in ("h", "hold"):
-                    game.apply_hold(current)
+                    game.advance_turn()
                     print("You hold.")
                     break
                 if choice in ("d", "draw"):
@@ -166,27 +160,31 @@ def run_cli() -> None:
                     print(f"Enter a number from 1 to {max_draw}.")
                     continue
                 print("Type 'h' to hold or 'd' to draw.")
-            game.advance_turn()
             continue
 
         # Other player (bot)
+        if p.reward is not None:
+            game.advance_turn()
+            continue
         if is_natural_blackjack(p.hand):
             print(f"Player {current} has natural blackjack. Reward = 2.")
             game.advance_turn()
             continue
-        act, num = bot_hold_or_draw(game, current)
-        if act == Action.HOLD:
-            game.apply_hold(current)
-            print(f"Player {current} holds.")
-        else:
-            game.apply_draw(current, num)
-            print(f"Player {current} draws {num} card(s). Reward = {game.players[current].reward}.")
-        game.advance_turn()
-
-    # If dealer didn't reveal yet (e.g. drew to 17+ then we need to reveal)
-    if not game.revealed:
-        game.dealer_reveal()
-        print("\nDealer reveals all.")
+        while True:
+            p = game.players[current]
+            if p.reward is not None:
+                break
+            act, _ = simple_player.choose_action(game, current)
+            if act == Action.HOLD:
+                game.advance_turn()
+                print(f"Player {current} holds.")
+                break
+            game.apply_draw(current, 1)
+            if game.players[current].reward is not None:
+                game.advance_turn()
+                print(f"Player {current} draws. Reward = {game.players[current].reward}.")
+                break
+        continue
 
     # Final hands and rewards
     print("\n--- Final hands and rewards ---")

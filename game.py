@@ -297,24 +297,3 @@ class Game:
                 p.done = True
 
 
-# def bot_hold_or_draw(game: Game, position: int) -> tuple[Action, int]:
-#     """Simple bot for non-dealer players: hold on 17+, else draw up to 3."""
-#     p = game.players[position]
-#     val = best_hand_value(p.hand)
-#     if val >= 17:
-#         return Action.HOLD, 0
-#     cards_left = 5 - len(p.hand)
-#     if cards_left == 0:
-#         return Action.HOLD, 0
-#     return Action.DRAW, min(3, cards_left)
-
-
-def dealer_bot_action(game: Game) -> Action:
-    dealer = game.players[0]
-    val = best_hand_value(dealer.hand)
-    if val >= 17:
-        return Action.REVEAL
-    cards_left = 5 - len(dealer.hand)
-    if cards_left == 0:
-        return Action.REVEAL
-    return Action.DRAW

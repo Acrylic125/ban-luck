@@ -20,11 +20,11 @@ from game import (
     Action,
     best_hand_value,
     is_natural_blackjack,
-    dealer_bot_action,
     make_deck,
 )
 from game import Card  # noqa: F401 - for type hints
 from deck import DeckCuttingStrategy, SwooshShuffleStrategy
+from dealer import Dealer, SimpleDealer
 
 def serialize_card_state(card: Card) -> str:
     value = card.blackjack_value()
@@ -72,9 +72,12 @@ def run_episode(
     get_agent_action: Callable[[str], int],
     deck: list[Card],
     game: Game,
-) -> list[tuple[int, int], int, int]:
+    dealer: Dealer | None = None,
+) -> list[tuple[str, int], int]:
     assert len(deck) == 52
     game.deal(deck)
+    if dealer is None:
+        dealer = SimpleDealer()
 
     agent_state_acitons: list[tuple[str, int]] = []
 
@@ -126,7 +129,7 @@ def run_episode(
         # Dealer
         if current == 0:
             while True:
-                act = dealer_bot_action(game)
+                act = dealer.choose_action(game)
                 if act == Action.REVEAL:
                     game.dealer_reveal_all()
                     break
