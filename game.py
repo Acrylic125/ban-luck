@@ -155,7 +155,7 @@ class PlayerState:
         return best_hand_value(self.hand)
 
     def can_draw_more(self) -> bool:
-        return len(self.hand) < 5 and self.reward is None
+        return len(self.hand) < 5 # and self.reward is None
 
 class Game:
     """Single round: one dealer, positions 1..n_players (N = n_players + 1). Caller passes the deck to deal()."""
@@ -217,7 +217,8 @@ class Game:
 
     def apply_draw(self, position: int, num_cards: int) -> None:
         p = self.players[position]
-        assert p.can_draw_more() and 1 <= num_cards <= min(3, 5 - len(p.hand))
+        assert p.can_draw_more() 
+        assert 1 <= num_cards <= min(3, 5 - len(p.hand)), f"num_cards: {num_cards}, hand: {p.hand}"
         for _ in range(num_cards):
             if self.deck:
                 p.hand.append(self.deck.pop())
@@ -294,7 +295,7 @@ class Game:
         then reset each player state and current_turn. Use before the next round when
         reusing the same game instance.
         """
-        player_order = list(range(self.N + 1))
+        player_order = list(range(self.N))
         random.shuffle(player_order)
         reward_sum = 0
         for k in player_order:

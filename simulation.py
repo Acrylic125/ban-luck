@@ -17,7 +17,6 @@ def run_game(
     dealer: Dealer,
     deck: list[Card],
 ) -> list[float]:
-    print("TTTTT")
     game.deal(deck)
     for _ in range(game.N):
         current = game.current_turn
@@ -51,6 +50,9 @@ def run_game(
                     break
                 if act == Action.DRAW:
                     game.apply_draw(0, 1)
+                    if len(game.players[0].hand) >= 5:
+                        game.dealer_reveal_all()
+                        break
                 else:
                     game.dealer_reveal_all()
                     break
