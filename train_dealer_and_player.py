@@ -11,12 +11,13 @@ import argparse
 import json
 from pathlib import Path
 
-from game import Action, Card, Game, is_natural_blackjack, make_deck
+from game import Card, Game, make_deck
 from deck import DeckCuttingStrategy, SwooshShuffleStrategy
 from players import Player, SimplePlayer, PolicyBasedPlayer
 from dealer import Dealer, PolicyBasedDealer, SimpleDealer
 from agent import mc_control, policy_to_dict
 from train_dealer_agent import mc_control_dealer
+from simulation import run_game
 
 NUM_EVAL_GAMES = 500
 MAX_ALTERNATING_ITERS = 100
@@ -25,49 +26,6 @@ DEALER_CONVERGENCE_FACTOR = 0.02     # dealer threshold = this * n_players
 DEFAULT_N_PLAYERS = 2
 DEFAULT_EPISODES_PER_ROUND = 500_000
 DEFAULT_EPSILON = 0.1
-
-
-def run_one_game(
-    game: Game,
-    player: Player,
-    dealer: Dealer,
-    *,
-    deck: list[Card],
-) -> list[float]:
-    """Run one game; return per-seat rewards (dealer + players)."""
-    game.deal(deck)
-    for _ in range(game.N):
-        current = game.current_turn
-        p = game.players[current]
-        if current != 0:
-            if is_natural_blackjack(p.hand):
-                game.advance_turn()
-                continue
-            while True:
-                p = game.players[current]
-                if p.reward is not None:
-                    break
-                act, _ = player.choose_action(game, current)
-                if act == Action.HOLD:
-                    game.advance_turn()
-                    break
-                game.apply_draw(current, 1)
-                if game.players[current].reward is not None:
-                    game.advance_turn()
-                    break
-            continue
-        if current == 0:
-            while True:
-                act = dealer.choose_action(game)
-                if act == Action.REVEAL:
-                    game.dealer_reveal_all()
-                    break
-                if act == Action.DRAW:
-                    game.apply_draw(0, 1)
-                else:
-                    game.dealer_reveal_all()
-                    break
-    return [game.get_player_reward(k) or 0 for k in range(game.N)]
 
 
 def evaluate(
@@ -82,7 +40,7 @@ def evaluate(
     player_rewards: list[float] = []
     dealer_rewards: list[float] = []
     for _ in range(num_games):
-        rewards = run_one_game(game, player, dealer, deck=deck)
+        rewards = run_game(game, player, dealer, deck=deck)
         dealer_rewards.append(rewards[0])
         player_rewards.append(sum(rewards[1:]) / len(rewards[1:]) if len(rewards) > 1 else 0.0)
         game.soft_reset()

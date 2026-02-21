@@ -25,36 +25,12 @@ from game import (
 from game import Card  # noqa: F401 - for type hints
 from deck import DeckCuttingStrategy, SwooshShuffleStrategy
 from dealer import Dealer, SimpleDealer
-
-def serialize_card_state(card: Card) -> str:
-    value = card.blackjack_value()
-    if isinstance(value, tuple):
-        return f"{value[0]}_{value[1]}"
-    return str(value)
-
-def state_from_hand(cards: list[Card]) -> str:
-    # It should not matter the order of the cards or the value it adds up to.
-    # As such, we treat the same hand as the same state.
-    v = [serialize_card_state(c) for c in cards]
-    v.sort()
-    return ",".join(v)
-
-# Actions: 
-NUM_ACTIONS = 4  # hold 0, draw 1, draw 2, draw 3
-
-def action_to_hold_or_draw(action: int) -> tuple[Action, int]:
-    """Map action index to (Action.HOLD or Action.DRAW, num_cards)."""
-    if action == 0:
-        return Action.HOLD, 0
-    return Action.DRAW, action  # 1, 2, or 3
-
-
-def get_legal_actions(num_cards: int) -> list[int]:
-    """Legal action indices when agent has num_cards (2–5). At 2 cards: all 4; at 5: only hold."""
-    if num_cards >= 5:
-        return [0]
-    max_draw = min(3, 5 - num_cards)
-    return [0] + list(range(1, max_draw + 1))
+from state import (
+    NUM_ACTIONS,
+    action_to_hold_or_draw,
+    get_legal_actions,
+    state_from_hand,
+)
 
 
 def _bot_hold_or_draw(game: Game, position: int) -> tuple[Action, int]:

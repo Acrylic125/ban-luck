@@ -8,12 +8,12 @@ Implementations:
 
 from __future__ import annotations
 
-from agent import (
+import random
+from state import (
     action_to_hold_or_draw,
     get_legal_actions,
     state_from_hand,
 )
-import random
 from abc import ABC, abstractmethod
 
 from game import Action, Game, best_hand_value

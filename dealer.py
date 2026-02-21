@@ -1,39 +1,18 @@
-"""
-Dealer abstraction for the card game.
-
-Implementations:
-- SimpleDealer: reveal on 17+, else draw one (house rule).
-- PolicyBasedDealer: uses a learned RL policy (state -> REVEAL or DRAW).
-"""
-
 from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
 
 from game import Action, Game, best_hand_value
-
+from state import state_from_hand
 
 class Dealer(ABC):
-    """Abstract base for the dealer. Chooses REVEAL or DRAW (one card at a time)."""
-
     @abstractmethod
     def choose_action(self, game: Game) -> Action:
-        """
-        Choose an action for the dealer's turn.
-
-        :param game: current game state (dealer is game.players[0])
-        :return: Action.REVEAL or Action.DRAW
-        """
         ...
 
 
 class SimpleDealer(Dealer):
-    """
-    House rule: reveal on 17+, otherwise draw one card at a time
-    (caller repeats until REVEAL or 5 cards).
-    """
-
     def choose_action(self, game: Game) -> Action:
         dealer = game.players[0]
         val = best_hand_value(dealer.hand)
@@ -69,7 +48,6 @@ class PolicyBasedDealer(Dealer):
         self._epsilon = epsilon
 
     def choose_action(self, game: Game) -> Action:
-        from agent import state_from_hand
         state = state_from_hand(game.players[0].hand)
         legal = get_dealer_legal_actions(game)
         if self._epsilon > 0 and random.random() < self._epsilon:
