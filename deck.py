@@ -36,25 +36,12 @@ class WashShuffleStrategy(DeckShuffleStrategy):
 
 
 class DeckCuttingStrategy(DeckShuffleStrategy):
-    """
-    A random proportion of the deck is cut to the top, repeated n times.
-
-    Each cut: pick a proportion in [proportion_min, proportion_max] (e.g. 0.1 to 0.7),
-    then move that many cards from the 'bottom' of the deck to the top.
-    So deck becomes deck[cut_index:] + deck[:cut_index].
-    """
-
     def __init__(
         self,
-        proportion_min: float = 0.1,
+        proportion_min: float = 0.3,
         proportion_max: float = 0.7,
         n: int = 5,
     ):
-        """
-        :param proportion_min: minimum fraction of deck to cut (0–1)
-        :param proportion_max: maximum fraction of deck to cut (0–1)
-        :param n: number of cuts to perform
-        """
         self.proportion_min = proportion_min
         self.proportion_max = proportion_max
         self.n = n
