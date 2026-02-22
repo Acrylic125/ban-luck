@@ -24,7 +24,7 @@ from dealer import (
 )
 from players import Player, SimplePlayer
 from agent import state_from_hand, policy_to_dict
-from deck import DeckCuttingStrategy, SwooshShuffleStrategy
+from deck import DeckCuttingStrategy, WashShuffleStrategy
 
 DEFAULT_EPISODES = 500_000
 DEFAULT_EPSILON = 0.1
@@ -115,7 +115,7 @@ def mc_control_dealer(
         best_a = max(legal, key=lambda a: qs[a] / qc[a] if qc[a] > 0 else float("-inf"))
         return best_a
 
-    SwooshShuffleStrategy().shuffle(deck, is_first=True)
+    WashShuffleStrategy().shuffle(deck, is_first=True)
     p10 = max(1, num_episodes // 10)
     for ep in range(num_episodes):
         if ep % p10 == 0:

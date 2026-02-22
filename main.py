@@ -4,7 +4,7 @@
 import json
 from pathlib import Path
 
-from deck import SwooshShuffleStrategy
+from deck import WashShuffleStrategy
 from game import (
     Game,
     Action,
@@ -72,7 +72,7 @@ def run_cli() -> None:
         print(f"Enter a number from 1 to {n_players}.")
 
     deck = make_deck()
-    SwooshShuffleStrategy().shuffle(deck, is_first=True)
+    WashShuffleStrategy().shuffle(deck, is_first=True)
     game = Game(n_players=n_players)
     game.deal(deck)
     dealer = SimpleDealer()

@@ -23,7 +23,7 @@ from game import (
     make_deck,
 )
 from game import Card  # noqa: F401 - for type hints
-from deck import DeckCuttingStrategy, DeckShuffleStrategy, SwooshShuffleStrategy
+from deck import DeckCuttingStrategy, DeckShuffleStrategy, WashShuffleStrategy
 from dealer import Dealer, SimpleDealer
 from state import (
     NUM_ACTIONS,
@@ -126,8 +126,8 @@ def mc_control(
     num_episodes: int = 500_000,
     epsilon: float = 0.1,
     dealer: Dealer | None = None,
-    first_shuffle_strategy: DeckShuffleStrategy = SwooshShuffleStrategy(),
-    subsequent_shuffle_strategy: DeckShuffleStrategy = SwooshShuffleStrategy(),
+    first_shuffle_strategy: DeckShuffleStrategy = WashShuffleStrategy(),
+    subsequent_shuffle_strategy: DeckShuffleStrategy = WashShuffleStrategy(),
 ) -> tuple[dict[str, list[float]], dict[str, int]]:
     if dealer is None:
         dealer = SimpleDealer()

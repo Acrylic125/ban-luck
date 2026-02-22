@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 from game import Card, Game, make_deck
-from deck import DeckCuttingStrategy, SwooshShuffleStrategy
+from deck import DeckCuttingStrategy, WashShuffleStrategy
 from players import Player, SimplePlayer, PolicyBasedPlayer
 from dealer import Dealer, PolicyBasedDealer, SimpleDealer
 from agent import mc_control, policy_to_dict
@@ -75,7 +75,7 @@ def main() -> None:
 
     game = Game(n_players=n_players)
     deck = make_deck()
-    SwooshShuffleStrategy().shuffle(deck, is_first=True)
+    WashShuffleStrategy().shuffle(deck, is_first=True)
 
     player_policy_path = Path(__file__).resolve().parent / f"agent_policy_alternating_{n_players}.json"
     dealer_policy_path = Path(__file__).resolve().parent / f"agent_dealer_policy_alternating_{n_players}.json"

@@ -28,7 +28,7 @@ class DeckShuffleStrategy(ABC):
         ...
 
 
-class SwooshShuffleStrategy(DeckShuffleStrategy):
+class WashShuffleStrategy(DeckShuffleStrategy):
     """Randomly sort the cards (full random shuffle)."""
 
     def shuffle(self, deck: list[Any], *, is_first: bool = True) -> None:

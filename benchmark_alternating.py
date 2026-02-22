@@ -15,7 +15,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 from game import Game, make_deck
-from deck import DeckCuttingStrategy, SwooshShuffleStrategy
+from deck import DeckCuttingStrategy, WashShuffleStrategy
 from players import PolicyBasedPlayer
 from dealer import PolicyBasedDealer
 from agent import policy_from_dict
@@ -60,7 +60,7 @@ def main() -> None:
 
     game = Game(n_players=n_players)
     deck = make_deck()
-    SwooshShuffleStrategy().shuffle(deck, is_first=True)
+    WashShuffleStrategy().shuffle(deck, is_first=True)
     subsequent_shuffle = DeckCuttingStrategy()
 
     rewards_runs: list[list[float]] = []
