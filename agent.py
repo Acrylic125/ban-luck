@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
-from typing import Callable
+from typing import Callable, List, Sequence
+
+import torch
+from torch import Tensor, nn
 
 from game import (
     Game,
@@ -21,8 +24,8 @@ from game import (
     best_hand_value,
     is_natural_blackjack,
     make_deck,
+    Card,
 )
-from game import Card  # noqa: F401 - for type hints
 from deck import DeckCuttingStrategy, DeckShuffleStrategy, WashShuffleStrategy
 from dealer import Dealer, SimpleDealer
 from state import (
@@ -182,6 +185,263 @@ def mc_control(
         policy[state] = max(legal, key=lambda a: q_list[a])
 
     return Q, policy
+
+
+def card_to_value(card: Card) -> int:
+    v = card.blackjack_value()
+    if isinstance(v, tuple):
+        # Ace -> use 1 as the "main" value.
+        v = v[0]
+    return int(v)
+
+def _pad_list(lst: list[int], length: int) -> list[int]:
+    if len(lst) < length:
+        return lst + [0] * (length - len(lst))
+    return lst[:length]
+
+def encode_state_with_history(
+    game: Game,
+    agent_position: int,
+    history_length: int,
+) -> list[int]:
+    """
+    Encode state as:
+
+    [Hand up to 5 cards] +
+    [Cards used 1 round ago, up to 5*N cards] +
+    ...
+    [Cards used M rounds ago, up to 5*N cards]
+
+    - 0 is used as NULL padding for each [] group.
+    - N is the number of players including the dealer (game.N).
+    - M is history_length. If current game index < M, pad undealt rounds with 0.
+    """
+    n_players_including_dealer = game.N
+
+    # Current hand (agent only)
+    agent_hand = game.players[agent_position].hand
+    state: list[int] = _pad_list([card_to_value(c) for c in agent_hand[:5]], 5)
+
+    # History: each entry in game.history_used is a list[Card] for that round.
+    per_round_len = 5 * n_players_including_dealer
+    # Get the last history_length rounds of history_used cards
+    history = game.history_used[-history_length:]
+    for i in range(history_length):
+        if i < len(history):
+            # Convert cards to value tokens and pad/truncate.
+            round_cards = history[i]
+            round_vec = [card_to_value(c) for c in round_cards]
+            round_vec = _pad_list(round_vec, per_round_len)
+            state.extend(round_vec)
+        else:
+            state.extend([0] * per_round_len)
+    return state
+
+
+class QNetwork(nn.Module):
+    """
+    Token-embedding MLP for approximating Q(s, a).
+
+    x is a batch of integer-encoded states of length state_len:
+    - 0 = PAD
+    - 1..K = card value tokens (Ace=1, ..., 10/J/Q/K=10)
+    """
+
+    def __init__(self, num_card_tokens: int, state_len: int, num_actions: int) -> None:
+        super().__init__()
+
+        embed_dim = 8
+        hidden = 128
+
+        self.state_len = state_len
+        self.embedding = nn.Embedding(
+            num_embeddings=num_card_tokens,
+            embedding_dim=embed_dim,
+            padding_idx=0,
+        )
+        self.net = nn.Sequential(
+            nn.Linear(state_len * embed_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, num_actions),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:  # type: ignore[override]
+        # x: (batch, state_len) of token ids
+        x = self.embedding(x)  # (batch, state_len, embed_dim)
+        x = x.view(x.size(0), -1)
+        return self.net(x)
+
+
+def run_episode_dqn(
+    agent_position: int,
+    get_agent_action: Callable[[list[int]], int],
+    deck: list[Card],
+    game: Game,
+    history_length: int,
+    dealer: Dealer | None = None,
+) -> list[tuple[list[int], int, int]]:
+    """
+    Like run_episode, but returns (state_vector, action, reward) tuples
+    using the new state representation with history.
+    """
+    assert len(deck) == 52
+    game.deal(deck)
+    if dealer is None:
+        dealer = SimpleDealer()
+
+    agent_state_actions: list[tuple[list[int], int]] = []
+
+    for _ in range(game.N):
+        current = game.current_turn
+        p = game.players[current]
+
+        # Player
+        if current != 0:
+            if is_natural_blackjack(p.hand):
+                game.advance_turn()
+                continue
+            # Only the agent acts when it's their turn; other players use the bot
+            if current == agent_position:
+                while True:
+                    p = game.players[agent_position]
+                    if p.reward is not None:
+                        break
+                    state_vec = encode_state_with_history(
+                        game,
+                        agent_position=agent_position,
+                        history_length=history_length,
+                    )
+                    action = get_agent_action(state_vec)
+                    agent_state_actions.append((state_vec, action))
+                    act, _num = action_to_hold_or_draw(action)
+                    if act == Action.HOLD:
+                        game.advance_turn()
+                        break
+                    game.apply_draw(agent_position, 1)
+                    if game.players[agent_position].reward is not None:
+                        game.advance_turn()
+                        break
+            else:
+                # Non-agent player: use bot (hold on 17+, else draw 1)
+                while True:
+                    p = game.players[current]
+                    if p.reward is not None:
+                        break
+                    act, _num = _bot_hold_or_draw(game, current)
+                    if act == Action.HOLD:
+                        game.advance_turn()
+                        break
+                    game.apply_draw(current, 1)
+                    if game.players[current].reward is not None:
+                        game.advance_turn()
+                        break
+            continue
+
+        # Dealer
+        if current == 0:
+            while True:
+                act = dealer.choose_action(game)
+                if act == Action.REVEAL:
+                    game.dealer_reveal_all()
+                    break
+                if act == Action.DRAW:
+                    game.apply_draw(0, 1)
+                else:
+                    game.dealer_reveal_all()
+                    break
+
+    reward = game.get_player_reward(agent_position)
+    if reward is None:
+        raise ValueError("Agent reward is None")
+
+    # Monte Carlo: same final reward for all state-action pairs in the episode
+    return [(s, a, reward) for (s, a) in agent_state_actions]
+
+
+def mc_control_dqn(
+    n_players: int = 2,
+    agent_position: int = 1,
+    num_episodes: int = 500_000,
+    epsilon: float = 0.1,
+    history_length: int = 0,
+    dealer: Dealer | None = None,
+    first_shuffle_strategy: DeckShuffleStrategy = WashShuffleStrategy(),
+    subsequent_shuffle_strategy: DeckShuffleStrategy = WashShuffleStrategy(),
+) -> QNetwork:
+    """
+    Monte Carlo control using a neural Q-network instead of a tabular Q.
+
+    We treat the final reward of the episode as the return for every (state, action)
+    pair visited in that episode and fit the network to these returns.
+    """
+    if dealer is None:
+        dealer = SimpleDealer()
+    game = Game(n_players=n_players)
+    deck = make_deck()
+
+    # State length: 5 for current hand, plus 5 * N per history step.
+    n_players_including_dealer = game.N
+    state_len = 5 + history_length * 5 * n_players_including_dealer
+    num_card_tokens = 14  # 0 = PAD, 1..13 possible value tokens (we use up to 10)
+
+    q_net = QNetwork(num_card_tokens=num_card_tokens, state_len=state_len, num_actions=NUM_ACTIONS)
+    optimizer = torch.optim.Adam(q_net.parameters(), lr=1e-3)
+    loss_fn = nn.MSELoss()
+
+    def get_action(state_vec: list[int]) -> int:
+        # Epsilon-greedy over legal actions based on current hand length.
+        # First 5 entries are the current hand.
+        num_cards = sum(1 for v in state_vec[:5] if v != 0)
+        legal = get_legal_actions(num_cards)
+        if not legal:
+            return 0
+
+        # Adjust epsilon for the legal set (same idea as tabular version)
+        true_epsilon = epsilon - (epsilon / len(legal)) if len(legal) > 0 else epsilon
+        if epsilon > 0 and random.random() < true_epsilon:
+            return random.choice(legal)
+
+        with torch.no_grad():
+            s = torch.tensor(state_vec, dtype=torch.long).unsqueeze(0)
+            q_values: Tensor = q_net(s)[0]
+            # Mask illegal actions
+            best_a = max(legal, key=lambda a: float(q_values[a].item()))
+        return best_a
+
+    first_shuffle_strategy.shuffle(deck, is_first=True)
+    p10 = max(1, num_episodes // 10)
+
+    for ep in range(num_episodes):
+        if ep % p10 == 0:
+            print(f"[DQN] Episode {ep} of {num_episodes} ({ep/num_episodes*100:.1f}%)")
+
+        episode_data = run_episode_dqn(
+            agent_position=agent_position,
+            get_agent_action=get_action,
+            deck=deck,
+            game=game,
+            history_length=history_length,
+            dealer=dealer,
+        )
+
+        # One Monte Carlo update per visited (state, action).
+        for state_vec, action, reward in episode_data:
+            # state_vec is a list of integer tokens; use Long for embedding indices.
+            s = torch.tensor(state_vec, dtype=torch.long).unsqueeze(0)
+            q_values: Tensor = q_net(s)
+            target = q_values.detach().clone()
+            target[0, action] = float(reward)
+            loss = loss_fn(q_values, target)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        game.soft_reset()
+        subsequent_shuffle_strategy.shuffle(deck, is_first=False)
+
+    return q_net
 
 
 def make_agent_policy(

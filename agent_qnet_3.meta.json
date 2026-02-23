@@ -1,0 +1,5 @@
+{
+  "n_players": 3,
+  "history_length": 2,
+  "epsilon": 0.1
+}

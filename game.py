@@ -166,6 +166,7 @@ class Game:
         self.N = n_players + 1  # dealer + players
         self.deck: List[Card] = []
         self.players: List[PlayerState] = []
+        self.history_used: List[List[Card]] = []
         self.current_turn: int = 1  # 1 to n_players, then 0 for dealer
         self.revealed: bool = False
 
@@ -298,15 +299,18 @@ class Game:
         player_order = list(range(self.N))
         random.shuffle(player_order)
         reward_sum = 0
+        this_history_used: List[Card] = []
         for k in player_order:
             p = self.players[k]
             reward_sum += p.reward
             for c in p.hand:
+                this_history_used.append(c)
                 self.deck.append(c)
             p.hand.clear()
             p.reward = None
         if reward_sum != 0:
             raise ValueError(f"Reward sum is not 0: {reward_sum}")
+        self.history_used.append(this_history_used)
         self.current_turn = 1
         self.revealed = False
 
