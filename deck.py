@@ -36,13 +36,6 @@ class WashShuffleStrategy(DeckShuffleStrategy):
 
 
 class DeckCuttingStrategy(DeckShuffleStrategy):
-    """
-    Each step: split deck into top and bottom at a random proportion (proportion_min/max).
-    With probability deck_interleaving_probability: split the top chunk into two (at
-    interleaving_proportion_min/max) and put the bottom chunk in between (top1 + bottom + top2).
-    Otherwise: move bottom to top (bottom + top). Repeated n times.
-    """
-
     def __init__(
         self,
         proportion_min: float = 0.3,
